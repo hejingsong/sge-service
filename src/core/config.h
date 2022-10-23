@@ -1,0 +1,1 @@
+#define EVENT_MGR_LIBRARY_DIR ""

@@ -1,0 +1,9 @@
+[submodule "src/third/libcontext"]
+	path = src/third/libcontext
+	url = https://github.com/twlostow/libcontext.git
+[submodule "src/third/liburing"]
+	path = src/third/liburing
+	url = https://github.com/axboe/liburing.git
+[submodule "src/third/ini"]
+	path = src/third/ini
+	url = https://github.com/rxi/ini.git
