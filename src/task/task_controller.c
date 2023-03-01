@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
@@ -11,6 +12,7 @@
 
 
 struct sge_task_worker {
+    int id;
     pthread_t tid;
     struct sge_task_mgr* mgr;
 };
@@ -34,14 +36,17 @@ sge_get_rand_worker() {
 static void*
 sge_worker_entry(void* arg) {
     int ret;
+    cpu_set_t set;
     struct sge_task_meta* task;
     struct sge_task_worker* worker = (struct sge_task_worker*)arg;
 
+    CPU_SET(worker->id, &set);
+    pthread_setaffinity_np(worker->tid, sizeof(set), &set);
+    SGE_LOG_SYS_ERROR("set thread affinity");
     worker->mgr = sge_create_task_mgr();
     while(!g_task_ctrl->quit) {
-        ret = sge_wait_task(worker->mgr, &task);
+        ret = sge_wait_task(worker->mgr, &task, &g_task_ctrl->quit);
         if (ret == SGE_ERR) {
-            usleep(300000);
             continue;
         }
         sge_sched(worker->mgr, task);
@@ -113,6 +118,7 @@ sge_start_worker(int worker_num) {
 
     for (i = 0; i < worker_num; ++i) {
         worker = &(g_task_ctrl->workers[i]);
+        worker->id = i;
 
         ret = pthread_create(&(worker->tid), NULL, sge_worker_entry, worker);
         if (ret != 0) {
@@ -167,6 +173,7 @@ int sge_wait_quit() {
     }
 
     for (i = 0; i < g_task_ctrl->worker_num; ++i) {
+        sge_wake_task(g_task_ctrl->workers[i].mgr);
         pthread_join(g_task_ctrl->workers[i].tid, &ret);
     }
 

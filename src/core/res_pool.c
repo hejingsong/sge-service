@@ -157,6 +157,7 @@ int sge_get_resource(struct sge_res_pool* pool, void** data) {
         res->in_pool = 0;
         res->idx = 0;
         res->pool = pool;
+        pool->op->init((void*)(&res->data));
     }
     if (pool->op->reset) {
         pool->op->reset((void*)(&res->data));

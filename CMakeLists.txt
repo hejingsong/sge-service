@@ -13,7 +13,6 @@ MESSAGE(STATUS "Build Type ${CMAKE_BUILD_TYPE}")
 #
 INCLUDE_DIRECTORIES(./src)
 INCLUDE_DIRECTORIES(./src/third/ini/src)
-INCLUDE_DIRECTORIES(./src/third/liburing/build)
 INCLUDE_DIRECTORIES(./src/third/libcontext)
 
 #

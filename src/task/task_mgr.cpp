@@ -31,14 +31,13 @@ struct sge_task_mgr {
     struct sge_task_meta main_task;
     struct sge_task_meta* cur_task;
     struct sge_queue* task_queue;
-    pthread_mutex_t task_queue_mutex;
-    pthread_cond_t task_queue_cond;
+    pthread_mutex_t queue_mutex;
+    pthread_cond_t queue_cond;
 };
 
 
 static __thread struct sge_task_mgr* tls_task_mgr = NULL;
 static struct sge_res_pool* g_meta_pool = NULL;
-static const struct timespec g_timespec = {.tv_sec = 0, .tv_nsec = 300000000};
 // 默认栈大小为1M
 static unsigned long g_page_size = 1 * 1024 * 1024;
 
@@ -109,19 +108,17 @@ struct sge_task_mgr* sge_create_task_mgr() {
     struct sge_task_mgr* mgr;
 
     mgr = (struct sge_task_mgr*)sge_malloc(sizeof(struct sge_task_mgr));
-    ret = pthread_mutex_init(&mgr->task_queue_mutex, NULL);
-    if (ret != 0) {
-        SGE_LOG_SYS_ERROR("init mutex error.");
+    if (0 != pthread_mutex_init(&mgr->queue_mutex, NULL)) {
+        SGE_LOG_SYS_ERROR("init task_queue mutex fail.");
         return NULL;
     }
-    ret = pthread_cond_init(&mgr->task_queue_cond, NULL);
-    if (ret != 0) {
-        SGE_LOG_SYS_ERROR("init cond error.");
+    if (0 != pthread_cond_init(&mgr->queue_cond, NULL)) {
+        SGE_LOG_SYS_ERROR("init task_queue cond fail.");
         return NULL;
     }
 
     mgr->task_queue = sge_create_queue(1024);
-    sge_clean_task_meta(&mgr->main_task);
+    sge_init_task_meta(&mgr->main_task);
     mgr->cur_task = &mgr->main_task;
 
     tls_task_mgr = mgr;
@@ -129,21 +126,32 @@ struct sge_task_mgr* sge_create_task_mgr() {
     return mgr;
 }
 
-int sge_wait_task(struct sge_task_mgr* mgr, struct sge_task_meta** task) {
+int sge_wait_task(struct sge_task_mgr* mgr, struct sge_task_meta** task, int *stop) {
     int ret;
-    void* data;
+    void* data = NULL;
 
-    pthread_mutex_lock(&mgr->task_queue_mutex);
-    pthread_cond_timedwait(&mgr->task_queue_cond, &mgr->task_queue_mutex, &g_timespec);
-    ret = sge_dequeue(mgr->task_queue, &data);
-    pthread_mutex_unlock(&mgr->task_queue_mutex);
-
-    if (ret == SGE_ERR) {
-        return SGE_ERR;
+    pthread_mutex_lock(&mgr->queue_mutex);
+    while(0 == *stop) {
+        ret = sge_dequeue(mgr->task_queue, &data);
+        if (SGE_OK == ret) {
+            break;
+        }
+        pthread_cond_wait(&mgr->queue_cond, &mgr->queue_mutex);
     }
+    pthread_mutex_unlock(&mgr->queue_mutex);
 
     *task = (struct sge_task_meta*)data;
     return ret;
+}
+
+int sge_wake_task(struct sge_task_mgr* mgr) {
+    if (NULL == mgr) {
+        return SGE_ERR;
+    }
+
+    pthread_cond_broadcast(&mgr->queue_cond);
+
+    return SGE_OK;
 }
 
 int sge_sched(struct sge_task_mgr* mgr, struct sge_task_meta* task) {
@@ -163,15 +171,15 @@ int sge_sched(struct sge_task_mgr* mgr, struct sge_task_meta* task) {
 int sge_add_task(struct sge_task_mgr* mgr, struct sge_task_meta* task) {
     int ret;
 
-    pthread_mutex_lock(&(mgr->task_queue_mutex));
+    pthread_mutex_lock(&mgr->queue_mutex);
     if (SGE_ERR == sge_enqueue(mgr->task_queue, (void*)task)) {
         SGE_LOG_ERROR("add task error, queue full.");
         ret = SGE_ERR;
     } else {
-        pthread_cond_broadcast(&mgr->task_queue_cond);
         ret = SGE_OK;
+        pthread_cond_broadcast(&mgr->queue_cond);
     }
-    pthread_mutex_unlock(&(mgr->task_queue_mutex));
+    pthread_mutex_unlock(&mgr->queue_mutex);
 
     return ret;
 }

@@ -15,7 +15,8 @@ int sge_async_execute(fn_task_cb fn, void* arg, int flags);
 
 struct sge_task_mgr* sge_create_task_mgr();
 struct sge_task_mgr* sge_get_task_mgr();
-int sge_wait_task(struct sge_task_mgr* mgr, struct sge_task_meta** task);
+int sge_wait_task(struct sge_task_mgr* mgr, struct sge_task_meta** task, int *stop);
+int sge_wake_task(struct sge_task_mgr* mgr);
 int sge_sched(struct sge_task_mgr* mgr, struct sge_task_meta* task);
 int sge_add_task(struct sge_task_mgr* mgr, struct sge_task_meta* task);
 
