@@ -1,36 +1,39 @@
-#include <stdio.h>
+#include <stddef.h>
 
 #include "core/sge.h"
+#include "core/list.h"
 #include "core/queue.h"
 
 struct sge_queue {
-    int cap;
-    int r;
-    int w;
+    size_t cap;
+    size_t r;
+    size_t w;
     void* data[0];
 };
 
-static int
-sge_queue_full(struct sge_queue* q) {
+static int queue_full__(struct sge_queue* q) {
     return (q->w + 1) % q->cap == q->r;
 }
 
-static int
-sge_queue_empty(struct sge_queue* q) {
+static int queue_empty__(struct sge_queue* q) {
     return q->r == q->w;
 }
 
-struct sge_queue* sge_create_queue(int length) {
-    int alloc_size = sizeof(struct sge_queue) + sizeof(void*) * length;
-    struct sge_queue* q = sge_malloc(alloc_size);
-    q->cap = length;
-    q->r = 0;
-    q->w = 0;
-    return q;
+int sge_alloc_queue(size_t size, struct sge_queue** queuep) {
+    size_t alloc_size;
+    struct sge_queue* queue;
+
+    alloc_size = sizeof(struct sge_queue) + sizeof(void*) * size;
+    queue = sge_calloc(alloc_size);
+    queue->cap = size;
+    queue->r = queue->w = 0;
+
+    *queuep = queue;
+    return SGE_OK;
 }
 
 int sge_enqueue(struct sge_queue* queue, void* data) {
-    if (sge_queue_full(queue)) {
+    if (queue_full__(queue)) {
         return SGE_ERR;
     }
 
@@ -39,18 +42,14 @@ int sge_enqueue(struct sge_queue* queue, void* data) {
     return SGE_OK;
 }
 
-int sge_dequeue(struct sge_queue* queue, void** data) {
-    if (sge_queue_empty(queue)) {
+int sge_dequeue(struct sge_queue* queue, void** datap) {
+    if (queue_empty__(queue)) {
+        *datap = NULL;
         return SGE_ERR;
     }
 
-    *data = queue->data[queue->r];
+    *datap = queue->data[queue->r];
     queue->r = (queue->r + 1) % queue->cap;
-    return SGE_OK;
-}
-
-int sge_reset_queue(struct sge_queue* queue) {
-    queue->r = queue->w = 0;
     return SGE_OK;
 }
 
@@ -62,3 +61,4 @@ int sge_destroy_queue(struct sge_queue* queue) {
     sge_free(queue);
     return SGE_OK;
 }
+

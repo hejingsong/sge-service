@@ -8,6 +8,46 @@ IF(NOT CMAKE_BUILD_TYPE)
 ENDIF()
 MESSAGE(STATUS "Build Type ${CMAKE_BUILD_TYPE}")
 
+SET(EPOLL_FILE "")
+SET(IOURING_FILE "")
+SET(WITH_EPOLL 1)
+
+IF(${WITHOUT_EPOLL})
+    SET(WITH_EPOLL 0)
+ELSE()
+    SET(EPOLL_FILE "src/event/epoll.c")
+ENDIF()
+
+IF(${WITH_IO_URING})
+    SET(WITH_IO_URING 1)
+    SET(IOURING_FILE "src/event/io_uring.c")
+
+    SET(LIBURING_SRC_DIR ${CMAKE_SOURCE_DIR}/src/third/liburing)
+    SET(LIBURING_OUTPUT_DIR ${LIBURING_SRC_DIR}/src)
+    SET(LIBURING_LIBRARY ${LIBURING_OUTPUT_DIR}/liburing.a)
+
+    MESSAGE(STATUS "LIBURING_SRC_DIR ${LIBURING_SRC_DIR}")
+
+    ADD_CUSTOM_TARGET(build_liburing
+        COMMAND cd ${LIBURING_SRC_DIR}
+        COMMAND chmod +x ./configure
+        COMMAND make
+        WORKING_DIRECTORY ${LIBURING_SRC_DIR}
+        COMMENT "build liburing target"
+    )
+
+    ADD_LIBRARY(liburing STATIC IMPORTED)
+    SET_PROPERTY(TARGET liburing APPEND PROPERTY IMPORTED_CONFIGURATIONS NOCONFIG)
+    SET_TARGET_PROPERTIES(liburing PROPERTIES IMPORTED_LOCATION_NOCONFIG "${LIBURING_LIBRARY}")
+    ADD_DEPENDENCIES(liburing build_liburing)
+
+    INCLUDE_DIRECTORIES(${LIBURING_OUTPUT_DIR})
+
+    LINK_LIBRARIES(liburing)
+ELSE()
+    SET(WITH_IO_URING 0)
+ENDIF()
+
 #
 # set include path
 #
@@ -23,58 +63,47 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 #
-# generate config.h file
+# generate const.h file
 #
 CONFIGURE_FILE(
-    "${PROJECT_SOURCE_DIR}/config.h.in"
-    "${PROJECT_SOURCE_DIR}/src/core/config.h"
+    "${PROJECT_SOURCE_DIR}/const.h.in"
+    "${PROJECT_SOURCE_DIR}/src/core/const.h"
 )
-
-#
-# event library
-#
-ADD_SUBDIRECTORY(./src/event/epoll)
-IF(${WITH_IOURING})
-    IF(${WITH_IOURING} STREQUAL "yes")
-        MESSAGE(STATUS "enable io uring event manager")
-        ADD_SUBDIRECTORY(./src/event/io_uring)
-    ELSE()
-        MESSAGE(STATUS "unknown io_uring variable")
-    ENDIF()
-ELSE()
-    MESSAGE(STATUS "without io uring event manager")
-ENDIF()
 
 # pthread
 SET(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -g")
 SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread -g")
 LINK_LIBRARIES(${CMAKE_DL_LIBS})
 
+# include python headers
+INCLUDE_DIRECTORIES("/application/Python-3.9.17/include/python3.9")
+
+# link python libs
+FIND_LIBRARY(PY_LIB
+    NAMES "python3.9"
+    PATHS "/application/Python-3.9.17/lib"
+)
+LINK_LIBRARIES(${PY_LIB})
+
 SET(SRC
     src/core/log.c
     src/core/dict.c
-    src/core/buffer.c
+    src/core/string.c
     src/core/queue.c
+    src/core/module.c
+    src/core/event.c
     src/core/res_pool.c
 
     src/third/ini/src/ini.c
     src/third/libcontext/libcontext.cpp
 
-    src/utils/config.c
-
-    src/event/event_pool.c
-    src/event/event_mgr.c
-
-    src/task/task_mgr.cpp
-    src/task/task_controller.c
-
+    src/server/cond.c
     src/server/server.c
-    src/server/acceptor.c
-    src/server/connection.c
-    src/server/socket.c
+    src/task/task.cpp
+    ${EPOLL_FILE}
+    ${IOURING_FILE}
 
-    src/module/module.c
-
+    src/config.c
     src/main.c
 )
 

@@ -1,0 +1,2 @@
+#define USE_EPOLL_EVENT_MGR             @WITH_EPOLL@
+#define USE_IO_URING_EVENT_MGR          @WITH_IO_URING@

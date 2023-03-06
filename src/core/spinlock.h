@@ -35,5 +35,4 @@ spinlock_destroy(struct sge_spinlock *lock) {
     (void) lock;
 }
 
-
 #endif

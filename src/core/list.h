@@ -34,20 +34,25 @@ do {                                                                            
     (node)->next->prev = (node)->prev;                                          \
 } while(0)
 
+#define SGE_LIST_MOVE(ori_list, new_list)                                       \
+do {                                                                            \
+    (new_list)->next = (ori_list)->next;                                        \
+    (new_list)->prev = (ori_list)->prev;                                        \
+    (ori_list)->next->prev = (new_list);                                        \
+    (ori_list)->prev->next = (new_list);                                        \
+    (ori_list)->next = (ori_list)->prev = (ori_list);                           \
+} while(0)
+
 #define SGE_LIST_EMPTY(list)    ((list)->next == (list))
 
-
-#define SGE_LIST_FOREACH_START  {
+#define SGE_LIST_LAST(list)     (list)->prev
 
 #define SGE_LIST_FOREACH(iter, list)                                               \
 for ((iter) = (list)->next; (iter) != (list); (iter) = (iter)->next)
 
 
-#define SGE_LIST_FOREACH_SAFE(iter, list)                                           \
-struct sge_list* __next;                                                        \
-for ((iter) = (list)->next, __next = (iter)->next; (iter) != (list); (iter) = __next, __next = __next->next)
-
-#define SGE_LIST_FOREACH_END    }
+#define SGE_LIST_FOREACH_SAFE(iter, next, list)                                           \
+for ((iter) = (list)->next, (next) = (iter)->next; (iter) != (list); (iter) = (next), (next) = (next)->next)
 
 
 #endif
