@@ -50,6 +50,7 @@ sge_worker_entry(void* arg) {
             continue;
         }
         sge_sched(worker->mgr, task);
+        sge_recycle_task_meta(worker->mgr);
     }
 }
 

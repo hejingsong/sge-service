@@ -30,6 +30,7 @@ struct sge_task_meta_pool {
 struct sge_task_mgr {
     struct sge_task_meta main_task;
     struct sge_task_meta* cur_task;
+    struct sge_task_meta* last_task;
     struct sge_queue* task_queue;
     pthread_mutex_t queue_mutex;
     pthread_cond_t queue_cond;
@@ -45,10 +46,7 @@ static unsigned long g_page_size = 1 * 1024 * 1024;
 static int
 sge_sched_to(struct sge_task_mgr* mgr, struct sge_task_meta* from, struct sge_task_meta* to) {
     mgr->cur_task = to;
-
-    if (from != &mgr->main_task && from->context) {
-        sge_release_resource(from);
-    }
+    mgr->last_task = from;
 
     jump_fcontext(&from->context, to->context, (intptr_t)from);
     return SGE_OK;
@@ -119,7 +117,7 @@ struct sge_task_mgr* sge_create_task_mgr() {
 
     mgr->task_queue = sge_create_queue(1024);
     sge_init_task_meta(&mgr->main_task);
-    mgr->cur_task = &mgr->main_task;
+    mgr->last_task = mgr->cur_task = &mgr->main_task;
 
     tls_task_mgr = mgr;
 
@@ -182,6 +180,15 @@ int sge_add_task(struct sge_task_mgr* mgr, struct sge_task_meta* task) {
     pthread_mutex_unlock(&mgr->queue_mutex);
 
     return ret;
+}
+
+int sge_recycle_task_meta(struct sge_task_mgr* mgr) {
+    if (mgr->last_task == &mgr->main_task) {
+        return SGE_OK;
+    }
+
+    sge_release_resource(mgr->last_task);
+    return SGE_OK;
 }
 
 struct sge_task_mgr* sge_get_task_mgr() {

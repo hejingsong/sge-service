@@ -19,6 +19,7 @@ int sge_wait_task(struct sge_task_mgr* mgr, struct sge_task_meta** task, int *st
 int sge_wake_task(struct sge_task_mgr* mgr);
 int sge_sched(struct sge_task_mgr* mgr, struct sge_task_meta* task);
 int sge_add_task(struct sge_task_mgr* mgr, struct sge_task_meta* task);
+int sge_recycle_task_meta(struct sge_task_mgr* mgr);
 
 int sge_create_task_meta_pool(int size);
 struct sge_task_meta* sge_get_task_meta(fn_task_cb fn, void* args, int flags);
