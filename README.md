@@ -36,7 +36,7 @@ make
 ```
 After successful compilation, the libpyhttp.so file will be generated
 
-## Run
+## Config
 1. Modify the example/config.ini file
 ```
 [core]
@@ -51,7 +51,10 @@ event = EPOLL
 server = 0.0.0.0:12345
 ```
 
-### 运行
+## Run
 ```bash
 sge-service example/pyhttp/config.ini
 ```
+
+# TODO
+1. io_uring event management is not yet stable
