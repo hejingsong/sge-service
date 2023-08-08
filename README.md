@@ -1,44 +1,57 @@
-# 简介
-一个简易的通用服务器。可以自定义消息处理，由底层做消息分发。使用libcontext作为异步任务调度，使用epoll/io_uring作为事件收发器。
+# Introduction
+A simple general purpose server. Message processing can be customized, and message distribution is done by the bottom layer. Use libcontext as asynchronous task scheduling, and epoll/io_uring as event transceiver.
 
-# 编译
-可以不指定`WITH_IOURING`选项，这样就不会编译io_uring库。
+# Build
+## Pre
+checkout submodule
 ```bash
 git submodule update --init
-mkdir build && cd build
-cmake -DWITH_IOURING=yes ..
-make
-make install
 ```
-# example项目
-## 介绍
-该项目实现了一个简陋的http服务
-## 编译
-1. 需要修改python3-config路径 example/CMakeLists.txt
+
+## Compile
 ```bash
 mkdir build && cd build
 cmake ..
 make
+make install
 ```
-2. 运行成功之后会生成libpyhttp.so文件
-## 运行项目
-1. 修改example/config.ini文件，主要修改worker_dir和dir两个配置。
-    1. worker_dir 表示该项目的工作目录
-    2. dir表示libpyhttp.so 存放的目录
+
+### Compile with io_uring
+The default event manager is epoll, you can also use io_uring
+```bash
+mkdir build && cd build
+cmake -DWITH_IO_URING=1 ..
+make
+make install
+```
+
+# example
+## Introduction
+a simple http server
+## Build
+```bash
+mkdir build && cd build
+cmake -DPY_CONFIG=python-config ..
+make
+```
+After successful compilation, the libpyhttp.so file will be generated
+
+## Run
+1. Modify the example/config.ini file
 ```
 [core]
 log_level = DEBUG
-event_type = EPOLL
-worker_dir = /home/hejs/Code/hejingsong/sge-service/example
 modules = pyhttp
+daemonize = 0
 
 [pyhttp]
-dir = /home/hejs/Code/hejingsong/sge-service/example/build
-host = 0.0.0.0
-port = 12345
+workspace = your workspace
+dldir = libpyhttp.so directory
+event = EPOLL
+server = 0.0.0.0:12345
 ```
 
 ### 运行
 ```bash
-sge-service example/config.ini
+sge-service example/pyhttp/config.ini
 ```
