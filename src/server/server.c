@@ -244,11 +244,11 @@ RET:
     return retcode;
 }
 
-int sge_init_server_pool(void) {
+int sge_init_server_pool(size_t size) {
     int ret;
-    ret = sge_alloc_res_pool(&socket_res_pool_ops, 1024, &socket_res_pool);
+    ret = sge_alloc_res_pool(&socket_res_pool_ops, size, &socket_res_pool);
     if (SGE_OK == ret) {
-        ret = sge_alloc_res_pool(&msg_chain_res_pool_ops, 1024, &msg_chain_res_pool);
+        ret = sge_alloc_res_pool(&msg_chain_res_pool_ops, size, &msg_chain_res_pool);
     }
     return ret;
 }

@@ -20,7 +20,7 @@ static void usage(const char* pname) {
 
 static int alloc_modules__(struct sge_context* ctx) {
     int ret, name_len;
-    const char *p1, *p2, *str_ori_modules;
+    const char *p1, *p2;
     struct sge_config* cfg = ctx->cfg;
     struct sge_module* module;
     struct sge_list *iter, *next;
@@ -29,8 +29,7 @@ static int alloc_modules__(struct sge_context* ctx) {
         return SGE_OK;
     }
 
-    sge_string_data(cfg->ori_modules, &str_ori_modules);
-    p1 = p2 = str_ori_modules;
+    p1 = p2 = cfg->ori_modules;
     while(1) {
         p1 = strstr(p1, ",");
         if (NULL == p1) {
@@ -177,28 +176,28 @@ static int daemonize(struct sge_context* ctx) {
     return change_user(ctx->cfg->user);
 }
 
-static int init_pool(void) {
+static int init_pool(struct sge_config* cfg) {
     int ret;
 
-    ret = sge_init_string_pool();
+    ret = sge_init_string_pool(cfg->string_pool_size);
     if (SGE_ERR == ret) {
         fprintf(stderr, "init string pool error.\n");
         return SGE_ERR;
     }
 
-    ret = sge_init_event_pool();
+    ret = sge_init_event_pool(cfg->event_pool_size);
     if (SGE_ERR == ret) {
         fprintf(stderr, "init event pool error.\n");
         goto event_pool_error;
     }
 
-    ret = sge_init_server_pool();
+    ret = sge_init_server_pool(cfg->socket_pool_size);
     if (SGE_ERR == ret) {
         fprintf(stderr, "init server pool error.\n");
         goto socket_pool_error;
     }
 
-    ret = sge_init_task_pool();
+    ret = sge_init_task_pool(cfg->task_pool_size);
     if (SGE_ERR == ret) {
         fprintf(stderr, "init task pool error.\n");
         goto task_pool_error;
@@ -335,21 +334,28 @@ int main(int argc, char const *argv[]) {
 
     g_ctx = &ctx;
 
-    if (SGE_ERR == init_pool()) {
-        return SGE_ERR;
-    }
-
     ret = init_config__(&ctx.cfg, argv[1]);
     if (SGE_ERR == ret) {
         fprintf(stderr, "parse config file(%s) error.", argv[1]);
-        goto error;
+        return SGE_ERR;
     }
 
     ret = sge_init_log(&ctx, NULL, NULL);
     if (SGE_ERR == ret) {
         fprintf(stderr, "init log error.\n");
         sge_destroy_config(ctx.cfg);
-        goto error;
+        return SGE_ERR;
+    }
+
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "string pool size: %d", ctx.cfg->string_pool_size);
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "event pool size: %d", ctx.cfg->event_pool_size);
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "socket pool size: %d", ctx.cfg->socket_pool_size);
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "tassk pool size: %d", ctx.cfg->task_pool_size);
+
+    if (SGE_ERR == init_pool(ctx.cfg)) {
+        sge_destroy_config(ctx.cfg);
+        sge_destroy_log();
+        return SGE_ERR;
     }
 
     ret = daemonize(&ctx);
@@ -377,9 +383,8 @@ int main(int argc, char const *argv[]) {
     SGE_LOG(SGE_LOG_LEVEL_INFO, "service shutdown... goodbye.");
 out:
     destroy_context(&ctx);
-    return ret;
 
 error:
     destroy_pool();
-    return SGE_ERR;
+    return ret;
 }

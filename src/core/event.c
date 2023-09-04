@@ -52,12 +52,12 @@ static struct sge_event* dup_event__(struct sge_event* evt) {
     return event;
 }
 
-int sge_init_event_pool(void) {
+int sge_init_event_pool(size_t size) {
     int ret;
 
-    ret = sge_alloc_res_pool(&event_res_pool_ops, 1024, &event_res_pool);
+    ret = sge_alloc_res_pool(&event_res_pool_ops, size, &event_res_pool);
     if (SGE_OK == ret) {
-        ret = sge_alloc_res_pool(&event_buff_res_pool_ops, 1024, &event_buff_res_pool);
+        ret = sge_alloc_res_pool(&event_buff_res_pool_ops, size, &event_buff_res_pool);
     }
     return ret;
 }

@@ -6,92 +6,83 @@
 #include "core/list.h"
 #include "core/spinlock.h"
 #include "core/res_pool.h"
+#include "core/queue.h"
 
 typedef unsigned long ulong;
 
 
-struct sge_res {
-    int in_pool;
-    struct sge_list list;
+struct __attribute__ ((__packed__)) sge_res {
+    int in_pool:1;
     struct sge_res_pool* pool;
     char data[0];
 };
 
 struct sge_res_pool {
     ulong size;
+    ulong used;
+    ulong item_size;
     struct sge_res_pool_ops* ops;
-    struct sge_list pool_list;
     struct sge_spinlock lock;
+    struct sge_res* items;
+    struct sge_queue* frees;
 };
 
 static int alloc_res__(struct sge_res_pool* pool, struct sge_res** resp) {
     struct sge_res* res;
-    size_t size;
 
-    size = pool->ops->size();
-    res = sge_calloc(sizeof(struct sge_res) + size);
-
+    res = sge_malloc(pool->item_size);
     res->in_pool = 0;
-    res->pool = pool;
-    SGE_LIST_INIT(&res->list);
-
     *resp = res;
     return SGE_OK;
 }
 
 static int alloc_res_items__(struct sge_res_pool* pool) {
-    ulong i;
-    struct sge_res* res;
+    size_t size;
 
-    for (i = 0; i < pool->size; ++i) {
-        if (SGE_ERR == alloc_res__(pool, &res)) {
-            goto error;
-        }
-
-        res->in_pool = 1;
-        SGE_LIST_ADD_TAIL(&pool->pool_list, &res->list);
-    }
+    size = pool->item_size * pool->size;
+    pool->items = sge_malloc(size);
 
     return SGE_OK;
-error:
-    return SGE_ERR;
 }
 
 int sge_alloc_res_pool(struct sge_res_pool_ops* ops, size_t size, struct sge_res_pool** poolp) {
-    size_t alloc_size;
     struct sge_res_pool* pool;
 
     pool = sge_calloc(sizeof(struct sge_res_pool));
     pool->ops = ops;
+    pool->used = 0;
     pool->size = size;
+    pool->item_size = ops->size() + sizeof(struct sge_res);
     SGE_SPINLOCK_INIT(&pool->lock);
-    SGE_LIST_INIT(&pool->pool_list);
-
-    if (SGE_ERR == alloc_res_items__(pool)) {
-        goto error;
-    }
+    sge_alloc_queue(size, &pool->frees);
+    alloc_res_items__(pool);
 
     *poolp = pool;
     return SGE_OK;
-
-error:
-    sge_free(pool);
-    *poolp = NULL;
-    return SGE_ERR;
 }
 
 int sge_get_resource(struct sge_res_pool* pool, void** datap) {
+    void* free;
     struct sge_res *res;
-    struct sge_list* last;
 
     SGE_SPINLOCK_LOCK(&pool->lock);
-    if (!SGE_LIST_EMPTY(&pool->pool_list)) {
-        last = SGE_LIST_LAST(&pool->pool_list);
-        SGE_LIST_REMOVE(last);
-        res = sge_container_of(last, struct sge_res, list);
-    } else {
+    do {
+        if (SGE_OK == sge_dequeue(pool->frees, &free)) {
+            res = free;
+            break;
+        }
+
+        if (pool->used < pool->size) {
+            res = pool->items + pool->used * pool->item_size;
+            res->in_pool = 1;
+            res->pool = pool;
+            pool->used++;
+            break;
+        }
+
         alloc_res__(pool, &res);
-    }
+    } while(0);
+
     SGE_SPINLOCK_UNLOCK(&pool->lock);
 
     *datap = &(res->data);
@@ -111,7 +102,7 @@ int sge_release_resource(void* data) {
 
     if (res->in_pool) {
         SGE_SPINLOCK_LOCK(&pool->lock);
-        SGE_LIST_ADD_TAIL(&pool->pool_list, &res->list);
+        sge_enqueue(pool->frees, res);
         SGE_SPINLOCK_UNLOCK(&pool->lock);
     } else {
         sge_free(res);
@@ -128,11 +119,8 @@ int sge_destroy_res_pool(struct sge_res_pool* pool) {
         return SGE_ERR;
     }
 
-    SGE_LIST_FOREACH_SAFE(iter, next, &pool->pool_list) {
-        res = sge_container_of(iter, struct sge_res, list);
-        SGE_LIST_REMOVE(&res->list);
-        sge_free(res);
-    }
+    sge_destroy_queue(pool->frees);
+    sge_free(pool->items);
     SGE_SPINLOCK_DESTROY(&pool->lock);
     sge_free(pool);
     return SGE_OK;

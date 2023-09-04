@@ -11,7 +11,7 @@ enum sge_task_flags {
     SGE_TASK_PERMANENT
 };
 
-int sge_init_task_pool(void);
+int sge_init_task_pool(size_t size);
 void sge_destroy_task_pool(void);
 
 int sge_init_task_ctrl(struct sge_context* ctx);

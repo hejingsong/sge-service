@@ -203,11 +203,11 @@ static void* task_main_loop__(void* arg) {
     return NULL;
 }
 
-int sge_init_task_pool(void) {
+int sge_init_task_pool(size_t size) {
     int ret;
-    ret = sge_alloc_res_pool(&task_meta_res_pool_ops, 1024, &task_meta_res_pool);
+    ret = sge_alloc_res_pool(&task_meta_res_pool_ops, size, &task_meta_res_pool);
     if (SGE_OK == ret) {
-        ret = sge_alloc_res_pool(&task_stack_res_pool_ops, 1024, &task_stack_res_pool);
+        ret = sge_alloc_res_pool(&task_stack_res_pool_ops, size, &task_stack_res_pool);
     }
     return ret;
 }

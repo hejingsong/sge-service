@@ -34,8 +34,8 @@ struct sge_res_pool_ops string_res_pool_ops = {
 };
 
 
-int sge_init_string_pool(void) {
-    return sge_alloc_res_pool(&string_res_pool_ops, 1024, &string_res_pool);
+int sge_init_string_pool(size_t size) {
+    return sge_alloc_res_pool(&string_res_pool_ops, size, &string_res_pool);
 }
 
 int sge_destroy_string_pool(void) {

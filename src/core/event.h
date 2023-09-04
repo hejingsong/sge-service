@@ -44,7 +44,7 @@ struct sge_event_mgr {
     void* private_data;
 };
 
-int sge_init_event_pool(void);
+int sge_init_event_pool(size_t size);
 void sge_destroy_event_pool(void);
 
 int sge_init_event_mgr(void);

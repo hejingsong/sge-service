@@ -3,7 +3,7 @@
 
 struct sge_string;
 
-int sge_init_string_pool(void);
+int sge_init_string_pool(size_t size);
 int sge_destroy_string_pool(void);
 
 int sge_alloc_string(int size, struct sge_string** sp);

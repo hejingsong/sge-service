@@ -52,7 +52,7 @@ struct sge_server {
     struct sge_module* module;
 };
 
-int sge_init_server_pool(void);
+int sge_init_server_pool(size_t size);
 void sge_destroy_server_pool(void);
 
 int sge_alloc_server(struct sge_module* module, struct sge_server** srvp);

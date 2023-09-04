@@ -60,7 +60,7 @@ static int default_handle_init(struct sge_log* log) {
     const char* p;
 
     if (log->ctx->cfg->logname) {
-        sge_string_data(log->ctx->cfg->logname, &p);
+        p = log->ctx->cfg->logname;
         log->stream = fopen(p, "ab+");
     } else {
         log->stream = stderr;

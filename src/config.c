@@ -72,16 +72,32 @@ static int parse_worker_num(ini_t* ini, struct sge_config* cfg) {
     return SGE_OK;
 }
 
-static int parse_user(ini_t* ini, struct sge_config* cfg) {
-    const char* p;
+static void parse_default_integer(ini_t *ini, const char* section, const char* key, int default_val, int *pval) {
+    int val;
 
-    if (SGE_ERR == parse_string(ini, "core", "user", &p)) {
-        cfg->user = NULL;
-        return SGE_OK;
+    if (SGE_ERR == parse_integer(ini, section, key, &val)) {
+        val = default_val;
     }
 
-    cfg->user = p;
-    return SGE_OK;
+    *pval = val;
+}
+
+static void parse_string_common(ini_t *ini, const char* section, const char* key, char* default_val, char** pval) {
+    const char* p;
+    char* v;
+    size_t len;
+
+    parse_string(ini, section, key, &p);
+    if (NULL == p) {
+        v = default_val;
+    } else {
+        len = strlen(p);
+        v = sge_malloc(len + 1);
+        strncpy(v, p, len);
+        v[len + 1] = '\0';
+    }
+
+    *pval = v;
 }
 
 static int parse_daemonize(ini_t* ini, struct sge_config* cfg) {
@@ -95,42 +111,15 @@ static int parse_daemonize(ini_t* ini, struct sge_config* cfg) {
     return SGE_OK;
 }
 
-static int parse_modules(ini_t* ini, struct sge_config* cfg) {
-    const char* p;
-
-    parse_string(ini, "core", "modules", &p);
-    if (NULL == p) {
-        cfg->ori_modules = NULL;
-    } else {
-        sge_dup_string(&cfg->ori_modules, p, strlen(p));
-    }
-
-    return SGE_OK;
-}
-
-static int parse_logname(ini_t* ini, struct sge_config* cfg) {
-    const char* p;
-
-    parse_string(ini, "core", "logname", &p);
-    if (NULL == p) {
-        cfg->logname = NULL;
-    } else {
-        sge_dup_string(&cfg->logname, p, strlen(p));
-    }
-
-    return SGE_OK;
-}
-
-
 int sge_alloc_config(const char* cfg_file, struct sge_config** cfgp) {
     int ret;
     struct sge_config* cfg;
+    size_t config_file_len = strlen(cfg_file);
 
     cfg = sge_calloc(sizeof(struct sge_config));
-    ret = sge_dup_string(&cfg->config_file, cfg_file, strlen(cfg_file));
-    if (SGE_ERR == ret) {
-        goto error;
-    }
+    cfg->config_file = sge_malloc(config_file_len + 1);
+    strncpy(cfg->config_file, cfg_file, config_file_len);
+    cfg->config_file[config_file_len + 1] = '\0';
 
     *cfgp = cfg;
     return SGE_OK;
@@ -143,23 +132,25 @@ error:
 int sge_parse_config(struct sge_config* cfg) {
     int ret;
     ini_t* ini;
-    const char* cfg_file;
 
     if (NULL == cfg || NULL == cfg->config_file) {
         return SGE_ERR;
     }
 
-    sge_string_data(cfg->config_file, &cfg_file);
-    ini = ini_load(cfg_file);
+    ini = ini_load(cfg->config_file);
     if (NULL == ini) {
         goto err;
     }
 
     parse_log_level(ini, cfg);
-    parse_modules(ini, cfg);
-    parse_logname(ini, cfg);
     parse_worker_num(ini, cfg);
-    parse_user(ini, cfg);
+    parse_default_integer(ini, "core", "string_pool_size", 1024, &cfg->string_pool_size);
+    parse_default_integer(ini, "core", "event_pool_size", 1024, &cfg->event_pool_size);
+    parse_default_integer(ini, "core", "socket_pool_size", 1024, &cfg->socket_pool_size);
+    parse_default_integer(ini, "core", "task_pool_size", 1024, &cfg->task_pool_size);
+    parse_string_common(ini, "core", "modules", NULL, &cfg->ori_modules);
+    parse_string_common(ini, "core", "logname", NULL, &cfg->logname);
+    parse_string_common(ini, "core", "user", NULL, &cfg->user);
     parse_daemonize(ini, cfg);
 
     cfg->private_data = ini;
@@ -184,8 +175,10 @@ int sge_destroy_config(struct sge_config* cfg) {
         return SGE_ERR;
     }
 
-    sge_destroy_string(cfg->config_file);
-    sge_destroy_string(cfg->ori_modules);
+    if (cfg->ori_modules) sge_free(cfg->ori_modules);
+    if (cfg->logname) sge_free(cfg->logname);
+    if (cfg->user) sge_free(cfg->user);
+    sge_free(cfg->config_file);
     if (cfg->private_data) {
         ini_free(cfg->private_data);
     }

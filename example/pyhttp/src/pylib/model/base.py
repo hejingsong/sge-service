@@ -2,7 +2,7 @@ import peewee
 
 db_name = "sge_file_manager"
 db_user = "root"
-db_pass = "xiaobai123"
+db_pass = "12345"
 db_host = "localhost"
 db_port = 3306
 
