@@ -23,7 +23,6 @@ static int alloc_modules__(struct sge_context* ctx) {
     const char *p1, *p2;
     struct sge_config* cfg = ctx->cfg;
     struct sge_module* module;
-    struct sge_list *iter, *next;
 
     if (NULL == cfg->ori_modules) {
         return SGE_OK;
@@ -54,13 +53,6 @@ static int alloc_modules__(struct sge_context* ctx) {
     }
 
     return SGE_OK;
-error:
-    SGE_LIST_FOREACH_SAFE(iter, next, &ctx->module_list) {
-        module = sge_container_of(iter, struct sge_module, list);
-        sge_destroy_module(module);
-    }
-
-    return SGE_ERR;
 }
 
 static int init_modules__(struct sge_context* ctx) {
@@ -259,10 +251,6 @@ task_error:
 event_error:
     sge_destroy_socket_mgr();
 sock_error:
-    sge_destroy_log();
-parse_error:
-    sge_destroy_config(ctx->cfg);
-error:
     return SGE_ERR;
 }
 
@@ -278,8 +266,6 @@ static int destroy_context(struct sge_context* ctx) {
     sge_destroy_task_ctrl();
     sge_destroy_event_mgr();
     sge_destroy_socket_mgr();
-    sge_destroy_config(ctx->cfg);
-    sge_destroy_log();
 
     return SGE_OK;
 }
@@ -350,23 +336,19 @@ int main(int argc, char const *argv[]) {
     SGE_LOG(SGE_LOG_LEVEL_DEBUG, "string pool size: %d", ctx.cfg->string_pool_size);
     SGE_LOG(SGE_LOG_LEVEL_DEBUG, "event pool size: %d", ctx.cfg->event_pool_size);
     SGE_LOG(SGE_LOG_LEVEL_DEBUG, "socket pool size: %d", ctx.cfg->socket_pool_size);
-    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "tassk pool size: %d", ctx.cfg->task_pool_size);
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "task pool size: %d", ctx.cfg->task_pool_size);
 
     if (SGE_ERR == init_pool(ctx.cfg)) {
-        sge_destroy_config(ctx.cfg);
-        sge_destroy_log();
-        return SGE_ERR;
+        goto error;
     }
 
     ret = daemonize(&ctx);
     if (SGE_OK != ret) {
-        sge_destroy_log();
-        sge_destroy_config(ctx.cfg);
         goto error;
     }
 
     if (SGE_ERR == init_context(&ctx)) {
-        return SGE_ERR;
+        goto error;
     }
 
     // The signal will be taken over by python, and the signal needs to be initialized after init_module
@@ -385,6 +367,8 @@ out:
     destroy_context(&ctx);
 
 error:
+    sge_destroy_config(ctx.cfg);
+    sge_destroy_log();
     destroy_pool();
     return ret;
 }

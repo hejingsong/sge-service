@@ -70,8 +70,7 @@ static int task_cb__(void* data) {
 static struct sge_msg_chain* alloc_msg_chain__(struct sge_string* str, enum sge_msg_type msg_type, unsigned long cid) {
     struct sge_msg_chain* chain;
 
-    sge_get_resource(msg_chain_res_pool, (void**)&chain);
-
+    chain = sge_get_resource(msg_chain_res_pool);
     chain->custom_id = cid;
     chain->msg = str;
     chain->msg_type = msg_type;
@@ -314,8 +313,7 @@ int sge_alloc_socket(int fd, struct sge_socket** sockp) {
         return SGE_ERR;
     }
 
-    sge_get_resource(socket_res_pool, (void**)&sock);
-
+    sock = sge_get_resource(socket_res_pool);
     sock->fd = fd;
     sock->status = SGE_SOCKET_AVAILABLE;
     sock->srv = NULL;

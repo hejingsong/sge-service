@@ -39,19 +39,19 @@ static size_t string_hash_fn__(const void* key, size_t len) {
     }
 
     switch (len) {
-        case 7: hash = ((hash << 5) + hash) + *pkey++;
-        case 6: hash = ((hash << 5) + hash) + *pkey++;
-        case 5: hash = ((hash << 5) + hash) + *pkey++;
-        case 4: hash = ((hash << 5) + hash) + *pkey++;
-        case 3: hash = ((hash << 5) + hash) + *pkey++;
-        case 2: hash = ((hash << 5) + hash) + *pkey++;
+        case 7: hash = ((hash << 5) + hash) + *pkey++;          // fall through
+        case 6: hash = ((hash << 5) + hash) + *pkey++;          // fall through
+        case 5: hash = ((hash << 5) + hash) + *pkey++;          // fall through
+        case 4: hash = ((hash << 5) + hash) + *pkey++;          // fall through
+        case 3: hash = ((hash << 5) + hash) + *pkey++;          // fall through
+        case 2: hash = ((hash << 5) + hash) + *pkey++;          // fall through
         case 1: hash = ((hash << 5) + hash) + *pkey++; break;
         case 0: break;
         default: break;
     }
 
     return hash;
-};
+}
 
 static int string_compare_fn__(const void* key1, size_t key_len1, const void* key2, size_t key_len2) {
     const char* left = (const char*)key1;
@@ -61,12 +61,16 @@ static int string_compare_fn__(const void* key1, size_t key_len1, const void* ke
     return strncmp(left, right, len);
 }
 
-static size_t integer_hash_fn__(const void* key, size_t _len) {
+static size_t integer_hash_fn__(const void* key, size_t len) {
+    sge_unused(len);
     return (size_t)key;
 }
 
-static int integer_compare_fn__(const void* key1, size_t _key_len1, const void* key2, size_t _key_len2) {
+static int integer_compare_fn__(const void* key1, size_t key_len1, const void* key2, size_t key_len2) {
     unsigned long left_val, right_val;
+
+    sge_unused(key_len1);
+    sge_unused(key_len2);
 
     left_val = (unsigned long)key1;
     right_val = (unsigned long)key2;

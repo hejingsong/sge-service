@@ -45,10 +45,13 @@ static size_t default_log_format(char* buf, struct sge_log* log, enum sge_log_le
     size_t len;
     size_t remain_size = SGE_LOG_MAX_LINE_SIZE;
 
+    sge_unused(log);
     len = format_date(buf, remain_size);
     len += format_log_level(level, buf + len, remain_size - len);
     len += format_file_info(filename, lineno, buf + len, remain_size - len);
-    len += format_tid(buf + len, remain_size - len);
+    if (log->level == SGE_LOG_LEVEL_DEBUG) {
+        len += format_tid(buf + len, remain_size - len);
+    }
     len += vsnprintf(buf + len, remain_size - len, fmt, ap);
     buf[len] = '\n';
     buf[len + 1] = '\0';
@@ -74,25 +77,29 @@ static int default_handle_init(struct sge_log* log) {
     return SGE_OK;
 }
 
-static int default_handle_destroy(struct sge_log* log) {
+static void default_handle_destroy(struct sge_log* log) {
     if (NULL == log) {
-        return SGE_ERR;
+        return;
     }
 
     if (log->stream != stderr) {
         fclose(log->stream);
     }
-
-    return SGE_OK;
 }
 
 static size_t default_log_handle(struct sge_log* log, const char* data, size_t len) {
+    size_t nwrite;
+
     if (NULL == log || NULL == data || len <= 0) {
-        return SGE_ERR;
+        return 0;
     }
 
-    fwrite(data, len, 1, log->stream);
-    return fflush(log->stream);
+    nwrite = fwrite(data, len, 1, log->stream);
+    if (nwrite) {
+        fflush(log->stream);
+    }
+
+    return nwrite;
 }
 
 static struct sge_log_format_ops default_format_ops = {
@@ -103,7 +110,7 @@ static struct sge_log_format_ops default_format_ops = {
 
 static struct sge_log_handle_ops default_handle_ops = {
     .init = default_handle_init,
-    .destroy = NULL,
+    .destroy = default_handle_destroy,
     .handle = default_log_handle
 };
 
@@ -171,7 +178,7 @@ int sge_write_log(enum sge_log_level level, const char* filename, size_t lineno,
     len = g_log->format_ops->format(buf, g_log, level, filename, lineno, fmt, ap);
     va_end(ap);
 
-    if (SGE_ERR == g_log->handle_ops->handle(g_log, buf, len)) {
+    if (0 == g_log->handle_ops->handle(g_log, buf, len)) {
         return SGE_ERR;
     }
 

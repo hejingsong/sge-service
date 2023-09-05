@@ -10,7 +10,7 @@ struct sge_res_pool_ops {
 
 
 int sge_alloc_res_pool(struct sge_res_pool_ops* ops, size_t size, struct sge_res_pool** poolp);
-int sge_get_resource(struct sge_res_pool* p, void** datap);
+void* sge_get_resource(struct sge_res_pool* p);
 int sge_release_resource(void* data);
 int sge_destroy_res_pool(struct sge_res_pool* p);
 

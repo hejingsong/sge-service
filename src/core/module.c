@@ -66,6 +66,7 @@ int sge_init_module(struct sge_module* module) {
     module->handler = handler;
     module->ops = ops;
     module->initialized = 1;
+    SGE_LOG(SGE_LOG_LEVEL_INFO, "module(%s) init success.", module_name);
     return SGE_OK;
 
 dlsym_error:

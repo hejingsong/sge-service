@@ -48,7 +48,7 @@ static int handle_accept__(struct sge_event* evt) {
             if (EINTR == errno) {
                 continue;
             }
-            SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "accept error. reason(%s)", strerror(errno));
+            SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "accept error. reason(%s) fd(%d)", strerror(errno), evt->fd);
             return SGE_ERR;
         }
         sge_alloc_event_buff(&buff);
@@ -114,10 +114,10 @@ static int handle_read__(struct sge_event* evt) {
 }
 
 static int handle_write__(struct sge_event* evt) {
-    size_t nwrite, datalen, ret, total;
+    size_t nwrite, datalen, total;
+    ssize_t ret;
     const char* data;
     struct sge_socket* sock;
-    struct sge_string* str;
     struct sge_event_buff* buff;
     struct sge_list msg_list;
     struct sge_list* iter, *next;
@@ -200,7 +200,6 @@ error:
 static int epoll_add__(struct sge_event_mgr* mgr, struct sge_event* new_evt, enum sge_event_type old_event_type) {
     int fd, ret, op;
     enum sge_event_type event_type;
-    uint32_t epoll_event;
     struct epoll_event event;
 
     if (old_event_type && old_event_type == new_evt->event_type) {
@@ -306,7 +305,11 @@ static struct sge_event_mgr_ops epoll_event_ops = {
     .destroy = epoll_destroy__
 };
 
-struct sge_event_mgr epoll_event_mgr = {
+static struct sge_event_mgr epoll_event_mgr = {
     .type_name = "EPOLL",
     .ops = &epoll_event_ops
 };
+
+__attribute__((constructor)) static void __init__(void) {
+    sge_register_event_mgr(&epoll_event_mgr);
+}

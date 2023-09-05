@@ -139,6 +139,8 @@ static void task_entry__(intptr_t v) {
     struct sge_task* task = tls_task;
     struct sge_task_meta* meta;
 
+    sge_unused(v);
+
     meta = task->cur_task;
     meta->cb(meta->arg);
 
@@ -146,7 +148,9 @@ static void task_entry__(intptr_t v) {
 }
 
 static int alloc_task_meta__(struct sge_task_meta** metap) {
-    return sge_get_resource(task_meta_res_pool, (void**)metap);
+    
+    *metap = (struct sge_task_meta*)sge_get_resource(task_meta_res_pool);
+    return SGE_OK;
 }
 
 static int add_task_queue__(struct sge_task* task, struct sge_task_meta* meta) {
@@ -287,7 +291,6 @@ error:
 
 int sge_destroy_task_ctrl() {
     int i;
-    struct sge_task* task;
 
     if (NULL == g_task_ctrl) {
         return SGE_ERR;
@@ -312,7 +315,7 @@ int sge_delivery_task(fn_task_cb cb, void* arg, enum sge_task_flags flags) {
     meta->arg = arg;
     meta->flags = flags;
     meta->stack_size = SGE_TASK_STACK_SIZE;
-    sge_get_resource(task_stack_res_pool, &meta->stack);
+    meta->stack = sge_get_resource(task_stack_res_pool);
     meta->fcontext = make_fcontext((char*)meta->stack + meta->stack_size, meta->stack_size, task_entry__);
 
     if (tls_task) {

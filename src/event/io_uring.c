@@ -100,6 +100,8 @@ static int handle_write__(struct sge_event_mgr* mgr, struct io_arg* arg, int ret
     struct sge_event* evt, new_evt;
     struct sge_string* buf;
 
+    sge_unused(ret);
+
     evt = arg->evt;
     evt_buff = arg->evt_buff;
     buf = evt_buff->buf;
@@ -130,7 +132,7 @@ static int prep_accept__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
         return SGE_ERR;
     }
 
-    sge_get_resource(io_arg_pool, (void**)&arg);
+    arg = sge_get_resource(io_arg_pool);
     sge_alloc_event_buff(&arg->evt_buff);
     arg->evt = evt;
     arg->evt_buff->arg = evt->arg;
@@ -154,7 +156,7 @@ static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
         return SGE_ERR;
     }
 
-    sge_get_resource(io_arg_pool, (void**)&arg);
+    arg = sge_get_resource(io_arg_pool);
     sge_alloc_event_buff(&arg->evt_buff);
     arg->evt = evt;
     arg->event_type = EVENT_TYPE_READABLE;
@@ -185,7 +187,7 @@ static int prep_write__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
         return SGE_ERR;
     }
 
-    sge_get_resource(io_arg_pool, (void**)&arg);
+    arg = sge_get_resource(io_arg_pool);
     sge_alloc_event_buff(&arg->evt_buff);
     arg->event_type = EVENT_TYPE_WRITEABLE;
     arg->evt = evt;
@@ -226,14 +228,9 @@ static int io_uring_init__(struct sge_event_mgr* mgr) {
 }
 
 static int io_uring_add__(struct sge_event_mgr* mgr, struct sge_event* new_evt, enum sge_event_type old_event_type) {
-    struct io_uring_sqe* sqe;
     struct io_uring_mgr* io_mgr;
-    struct sge_msg_chain* chain;
-    struct sge_event_buff* evt_buff, *buff;
-    const char* data;
-    size_t msglen;
 
-    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "new_evt(%x) fd(%d), sid(%ld), old_event_type(%d)", new_evt, new_evt->fd, new_evt->custom_id, old_event_type);
+    sge_unused(old_event_type);
 
     io_mgr = (struct io_uring_mgr*)mgr->private_data;
     if (new_evt->event_type & EVENT_TYPE_ACCEPTABLE) {
@@ -314,7 +311,11 @@ static struct sge_event_mgr_ops io_uring_event_ops = {
     .destroy = epoll_destroy__
 };
 
-struct sge_event_mgr io_uring_event_mgr = {
+static struct sge_event_mgr io_uring_event_mgr = {
     .type_name = "IO_URING",
     .ops = &io_uring_event_ops
 };
+
+__attribute__((constructor)) static void __init__(void) {
+    sge_register_event_mgr(&io_uring_event_mgr);
+}

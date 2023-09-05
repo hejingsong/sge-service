@@ -51,7 +51,7 @@ int sge_alloc_string(int size, struct sge_string** sp) {
     }
 
     if (size <= SGE_STRING_SIZE) {
-        ret = sge_get_resource(string_res_pool, (void**)sp);
+        *sp = sge_get_resource(string_res_pool);
         size = SGE_STRING_SIZE;
     } else {
         ret = alloc_string_ex__(size, sp);

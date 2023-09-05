@@ -112,7 +112,6 @@ static int parse_daemonize(ini_t* ini, struct sge_config* cfg) {
 }
 
 int sge_alloc_config(const char* cfg_file, struct sge_config** cfgp) {
-    int ret;
     struct sge_config* cfg;
     size_t config_file_len = strlen(cfg_file);
 
@@ -123,14 +122,9 @@ int sge_alloc_config(const char* cfg_file, struct sge_config** cfgp) {
 
     *cfgp = cfg;
     return SGE_OK;
-
-error:
-    sge_free(cfg);
-    return SGE_ERR;
 }
 
 int sge_parse_config(struct sge_config* cfg) {
-    int ret;
     ini_t* ini;
 
     if (NULL == cfg || NULL == cfg->config_file) {
@@ -160,8 +154,6 @@ err:
 }
 
 int sge_get_config(struct sge_config* cfg, const char *section, const char *key, const char** p) {
-    const char* val;
-
     if (NULL == cfg || NULL == section || NULL == key) {
         return SGE_ERR;
     }

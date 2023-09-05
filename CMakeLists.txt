@@ -71,19 +71,9 @@ CONFIGURE_FILE(
 )
 
 # pthread
-SET(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -g")
-SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread -g")
+SET(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -g -Werror -Wall -Wextra")
+SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread -g -Werror -Wall -Wextra")
 LINK_LIBRARIES(${CMAKE_DL_LIBS})
-
-# include python headers
-INCLUDE_DIRECTORIES("/application/Python-3.9.17/include/python3.9")
-
-# link python libs
-FIND_LIBRARY(PY_LIB
-    NAMES "python3.9"
-    PATHS "/application/Python-3.9.17/lib"
-)
-LINK_LIBRARIES(${PY_LIB})
 
 SET(SRC
     src/core/log.c

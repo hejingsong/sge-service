@@ -32,6 +32,7 @@ static int alloc_res__(struct sge_res_pool* pool, struct sge_res** resp) {
 
     res = sge_malloc(pool->item_size);
     res->in_pool = 0;
+    res->pool = NULL;
     *resp = res;
     return SGE_OK;
 }
@@ -61,7 +62,7 @@ int sge_alloc_res_pool(struct sge_res_pool_ops* ops, size_t size, struct sge_res
     return SGE_OK;
 }
 
-int sge_get_resource(struct sge_res_pool* pool, void** datap) {
+void* sge_get_resource(struct sge_res_pool* pool) {
     void* free;
     struct sge_res *res;
 
@@ -85,8 +86,7 @@ int sge_get_resource(struct sge_res_pool* pool, void** datap) {
 
     SGE_SPINLOCK_UNLOCK(&pool->lock);
 
-    *datap = &(res->data);
-    return SGE_OK;
+    return &(res->data);
 }
 
 int sge_release_resource(void* data) {
@@ -112,9 +112,6 @@ int sge_release_resource(void* data) {
 }
 
 int sge_destroy_res_pool(struct sge_res_pool* pool) {
-    struct sge_list* iter, *next;
-    struct sge_res* res;
-
     if (NULL == pool) {
         return SGE_ERR;
     }

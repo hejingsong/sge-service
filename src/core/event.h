@@ -47,6 +47,7 @@ struct sge_event_mgr {
 int sge_init_event_pool(size_t size);
 void sge_destroy_event_pool(void);
 
+void sge_register_event_mgr(struct sge_event_mgr* mgr);
 int sge_init_event_mgr(void);
 int sge_get_event_mgr(const char* event_type_name, struct sge_event_mgr** mgrp);
 int sge_add_event(struct sge_event_mgr* mgr, struct sge_event* evt);

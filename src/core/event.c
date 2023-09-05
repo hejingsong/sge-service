@@ -7,24 +7,7 @@
 
 extern struct sge_dict_ops integer_dict_ops;
 
-#if USE_EPOLL_EVENT_MGR
-    extern struct sge_event_mgr epoll_event_mgr;
-#endif
-
-#if USE_IO_URING_EVENT_MGR
-    extern struct sge_event_mgr io_uring_event_mgr;
-#endif
-
-
-static struct sge_event_mgr* event_mgr_types[] = {
-#if USE_EPOLL_EVENT_MGR
-    &epoll_event_mgr,
-#endif
-#if USE_IO_URING_EVENT_MGR
-    &io_uring_event_mgr,
-#endif
-    NULL
-};
+static struct sge_event_mgr* event_mgr_types[SGE_MAX_EVENT_TYPE];
 
 static size_t event_size__(void) {
     return sizeof(struct sge_event);
@@ -46,7 +29,7 @@ static struct sge_res_pool_ops event_buff_res_pool_ops = {
 static struct sge_event* dup_event__(struct sge_event* evt) {
     struct sge_event* event;
 
-    sge_get_resource(event_res_pool, (void**)&event);
+    event = sge_get_resource(event_res_pool);
     sge_copy_event(evt, event);
 
     return event;
@@ -65,6 +48,26 @@ int sge_init_event_pool(size_t size) {
 void sge_destroy_event_pool(void) {
     sge_destroy_res_pool(event_res_pool);
     sge_destroy_res_pool(event_buff_res_pool);
+}
+
+void sge_register_event_mgr(struct sge_event_mgr* mgr) {
+    int i;
+    struct sge_event_mgr** p;
+
+    if (NULL == mgr) {
+        return;
+    }
+
+    for (i = 0, p = &event_mgr_types[i]; i < SGE_MAX_EVENT_TYPE && *p; ++i, p = &event_mgr_types[i]);
+    if (i >= SGE_MAX_EVENT_TYPE) {
+        fprintf(stderr,
+            "adding event_mgr(%s) failed. "
+            "since the number of event_mgr is greater than %d, "
+            "if you want to add this event_mgr, please modify the SGE_MAX_EVENT_TYPE macro.\n", mgr->type_name, SGE_MAX_EVENT_TYPE);
+        exit(-1);
+    }
+
+    *p = mgr;
 }
 
 int sge_init_event_mgr(void) {
@@ -196,7 +199,8 @@ int sge_destroy_event_mgr(void) {
 }
 
 int sge_alloc_event_buff(struct sge_event_buff** buffp) {
-    return sge_get_resource(event_buff_res_pool, (void**)buffp);
+    *buffp = sge_get_resource(event_buff_res_pool);
+    return SGE_OK;
 }
 
 int sge_release_event_buff(struct sge_event_buff* buff) {
