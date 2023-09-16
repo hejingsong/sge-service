@@ -63,18 +63,16 @@ int sge_alloc_res_pool(struct sge_res_pool_ops* ops, size_t size, struct sge_res
 }
 
 void* sge_get_resource(struct sge_res_pool* pool) {
-    void* free;
-    struct sge_res *res;
+    struct sge_res *res = NULL;
 
     SGE_SPINLOCK_LOCK(&pool->lock);
     do {
-        if (SGE_OK == sge_dequeue(pool->frees, &free)) {
-            res = free;
+        if (SGE_OK == sge_dequeue(pool->frees, (void**)&res)) {
             break;
         }
 
         if (pool->used < pool->size) {
-            res = pool->items + pool->used * pool->item_size;
+            res = (struct sge_res*)((char*)pool->items + pool->used * pool->item_size);
             res->in_pool = 1;
             res->pool = pool;
             pool->used++;
