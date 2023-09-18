@@ -35,17 +35,17 @@ static size_t socket_size__(void) {
     return sizeof(struct sge_socket);
 }
 
-static size_t msg_chain_size__(void) {
-    return sizeof(struct sge_msg_chain);
+static size_t message_size__(void) {
+    return sizeof(struct sge_message);
 }
 
 static struct sge_res_pool* socket_res_pool;
 static struct sge_res_pool_ops socket_res_pool_ops = {
     .size = socket_size__
 };
-static struct sge_res_pool* msg_chain_res_pool;
-static struct sge_res_pool_ops msg_chain_res_pool_ops = {
-    .size = msg_chain_size__
+static struct sge_res_pool* message_res_pool;
+static struct sge_res_pool_ops message_res_pool_ops = {
+    .size = message_size__
 };
 
 static unsigned long alloc_sid__(struct sge_socket_mgr* mgr) {
@@ -67,25 +67,13 @@ static int task_cb__(void* data) {
     return ret;
 }
 
-static struct sge_msg_chain* alloc_msg_chain__(struct sge_string* str, enum sge_msg_type msg_type, unsigned long cid) {
-    struct sge_msg_chain* chain;
-
-    chain = sge_get_resource(msg_chain_res_pool);
-    chain->custom_id = cid;
-    chain->msg = str;
-    chain->msg_type = msg_type;
-    SGE_LIST_INIT(&chain->list);
-
-    return chain;
-}
-
-static int append_msg__(struct sge_socket* sock, struct sge_msg_chain* chain) {
-    if (NULL == sock || NULL == chain) {
+static int append_msg__(struct sge_socket* sock, struct sge_message* msg) {
+    if (NULL == sock || NULL == msg) {
         return SGE_ERR;
     }
 
     SGE_SPINLOCK_LOCK(&sock->lock);
-    SGE_LIST_ADD_TAIL(&sock->msg_list, &chain->list);
+    SGE_LIST_ADD_TAIL(&sock->msg_list, &msg->entry);
     SGE_SPINLOCK_UNLOCK(&sock->lock);
 
     return SGE_OK;
@@ -103,93 +91,103 @@ static int notify_module__(struct sge_module* module) {
     return SGE_OK;
 }
 
-static int handle_write_done__(struct sge_event_buff* event_buff) {
+static int handle_write_done__(struct sge_list* head) {
+    struct sge_list* iter, *next;
     struct sge_socket* sock;
+    struct sge_message* msg;
 
-    sock = (struct sge_socket*)event_buff->arg;
-    if (NULL == sock) {
-        goto ret;
+    SGE_LIST_FOREACH_SAFE(iter, next, head) {
+        msg = sge_container_of(iter, struct sge_message, entry);
+        sock = (struct sge_socket*)msg->ud;
+        if (sock) {
+            sge_del_event(sock->srv->event_mgr, sock->sid, EVENT_TYPE_WRITEABLE);
+        }
+
+        SGE_LIST_REMOVE(iter);
+        sge_destroy_message(msg);
     }
 
-    sge_del_event(sock->srv->event_mgr, sock->sid, EVENT_TYPE_WRITEABLE);
-ret:
-    sge_release_event_buff(event_buff);
     return SGE_OK;
 }
 
-static int handle_new_msg__(struct sge_event_buff* event_buff) {
+static int handle_new_msg__(struct sge_list* head) {
     int ret;
-    struct sge_string* str;
     struct sge_socket* conn;
-    struct sge_msg_chain* chain;
     struct sge_module* module;
-    enum sge_msg_type msg_type;
+    struct sge_list* iter, *next;
+    struct sge_message* msg;
 
-    conn = (struct sge_socket*)event_buff->arg;
-    str = event_buff->buf;
-    module = conn->srv->module;
-
-    if (NULL == str) {
-        // peer closed.
-        shutdown(conn->fd, SHUT_RD);
-        ret = sge_del_event(conn->srv->event_mgr, conn->sid, EVENT_TYPE_READABLE);
-        if (SGE_ERR == ret) {
-            SGE_LOG(SGE_LOG_LEVEL_ERROR, "del event error. fd(%d), sid(%ld)", conn->fd, conn->sid);
-        }
-        conn->status = SGE_SOCKET_PEER_CLOSED;
-        msg_type = SGE_MSG_TYPE_CLOSED;
-    } else {
-        msg_type = SGE_MSG_TYPE_NEW_MSG;
+    if (SGE_LIST_EMPTY(head)) {
+        return SGE_OK;
     }
 
-    chain = alloc_msg_chain__(str, msg_type, conn->sid);
-    sge_add_module_msg(module, &chain->list);
+    SGE_LIST_FOREACH_SAFE(iter, next, head) {
+        msg = sge_container_of(iter, struct sge_message, entry);
+        conn = (struct sge_socket*)msg->ud;
+        module = conn->srv->module;
+
+        if (msg->msg_type == SGE_MSG_TYPE_CLOSED) {
+            // peer closed.
+            shutdown(conn->fd, SHUT_RD);
+            ret = sge_del_event(conn->srv->event_mgr, conn->sid, EVENT_TYPE_READABLE);
+            if (SGE_ERR == ret) {
+                SGE_LOG(SGE_LOG_LEVEL_ERROR, "del event error. fd(%d), sid(%ld)", conn->fd, conn->sid);
+            }
+            conn->status = SGE_SOCKET_PEER_CLOSED;
+        }
+        SGE_LIST_REMOVE(iter);
+        sge_add_module_msg(module, &msg->entry);
+    }
     notify_module__(module);
 
-    sge_release_event_buff(event_buff);
     return SGE_OK;
 }
 
-static int handle_new_conn__(struct sge_event_buff* event_buff) {
+static int handle_new_conn__(struct sge_list* head) {
     int fd, ret;
     struct sge_server* server;
     struct sge_socket* conn;
     struct sge_module* module;
     struct sge_event conn_evt;
-    struct sge_msg_chain* chain;
+    struct sge_list* iter, *next;
+    struct sge_message* msg;
 
-    server = (struct sge_server*)event_buff->arg;
-    module = server->module;
-    fd = event_buff->ret;
-    ret = sge_alloc_socket(fd, &conn);
-    if (SGE_ERR == ret) {
-        SGE_LOG(SGE_LOG_LEVEL_ERROR, "accept new conn error. fd(%d).", fd);
-        goto error;
-    }
-    conn->srv = server;
-
-    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "new conn fd(%d), sid(%ld)", fd, conn->sid);
-
-    conn_evt.arg = conn;
-    conn_evt.custom_id = conn->sid;
-    conn_evt.event_type = EVENT_TYPE_READABLE;
-    conn_evt.fd = conn->fd;
-    conn_evt.cb = handle_new_msg__;
-    conn_evt.write_cb = NULL;
-    ret = sge_add_event(server->event_mgr, &conn_evt);
-    if (SGE_ERR == ret) {
-        sge_destroy_socket(conn);
-        goto error;
+    if (SGE_LIST_EMPTY(head)) {
+        return SGE_OK;
     }
 
-    chain = alloc_msg_chain__(NULL, SGE_MSG_TYPE_NEW_CONN, conn->sid);
-    sge_add_module_msg(module, &chain->list);
+    SGE_LIST_FOREACH_SAFE(iter, next, head) {
+        msg = sge_container_of(iter, struct sge_message, entry);
+        fd = msg->ret;
+        server = (struct sge_server*)msg->ud;
+
+        sge_alloc_socket(fd, &conn);
+        conn->srv = server;
+
+        SGE_LOG(SGE_LOG_LEVEL_DEBUG, "new conn fd(%d), sid(%ld)", fd, conn->sid);
+
+        conn_evt.arg = conn;
+        conn_evt.custom_id = conn->sid;
+        conn_evt.event_type = EVENT_TYPE_READABLE;
+        conn_evt.fd = conn->fd;
+        conn_evt.cb = handle_new_msg__;
+        conn_evt.write_cb = NULL;
+        ret = sge_add_event(server->event_mgr, &conn_evt);
+        if (SGE_ERR == ret) {
+            sge_destroy_socket(conn);
+            SGE_LIST_REMOVE(iter);
+            sge_destroy_message(msg);
+            continue;
+        }
+
+        SGE_LIST_REMOVE(iter);
+        module = server->module;
+        msg->custom_id = conn->sid;
+        sge_add_module_msg(module, &msg->entry);
+    }
     notify_module__(module);
 
     return SGE_OK;
-error:
-    sge_release_event_buff(event_buff);
-    return SGE_ERR;
 }
 
 static int create_port_listener__(const char* addr, const char* port, struct sge_socket** sockp) {
@@ -247,14 +245,14 @@ int sge_init_server_pool(size_t size) {
     int ret;
     ret = sge_alloc_res_pool(&socket_res_pool_ops, size, &socket_res_pool);
     if (SGE_OK == ret) {
-        ret = sge_alloc_res_pool(&msg_chain_res_pool_ops, size, &msg_chain_res_pool);
+        ret = sge_alloc_res_pool(&message_res_pool_ops, size, &message_res_pool);
     }
     return ret;
 }
 
 void sge_destroy_server_pool(void) {
     sge_destroy_res_pool(socket_res_pool);
-    sge_destroy_res_pool(msg_chain_res_pool);
+    sge_destroy_res_pool(message_res_pool);
 }
 
 int sge_alloc_server(struct sge_module* module, struct sge_server** srvp) {
@@ -346,8 +344,15 @@ int sge_destroy_socket(struct sge_socket* sock) {
 int sge_destroy_socket_by_sid(sge_socket_id sid) {
     struct sge_socket* sock;
 
-    sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)&sock);
-    return sge_destroy_socket(sock);
+    if (SGE_OK == sge_get_socket(sid, &sock)) {
+        return sge_destroy_socket(sock);
+    } else {
+        return SGE_ERR;
+    }
+}
+
+int sge_get_socket(sge_socket_id sid, struct sge_socket** sock) {
+    return sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)sock);
 }
 
 int sge_create_listener(const char* server_addr, struct sge_server* server) {
@@ -396,20 +401,11 @@ int sge_create_listener(const char* server_addr, struct sge_server* server) {
     return SGE_OK;
 }
 
-int sge_destroy_msg_chain(struct sge_msg_chain* chain) {
-    if (NULL == chain) {
-        return SGE_ERR;
-    }
-
-    return sge_release_resource(chain);
-}
-
 int sge_send_msg(sge_socket_id sid, const char* msg, size_t len) {
     int ret;
     size_t nwrite;
     struct sge_socket* sock;
-    struct sge_string* str;
-    struct sge_msg_chain* chain;
+    struct sge_message* m;
     struct sge_event evt;
 
     sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)&sock);
@@ -435,9 +431,13 @@ int sge_send_msg(sge_socket_id sid, const char* msg, size_t len) {
     }
 
     if (nwrite != len) {
-        sge_dup_string(&str, msg + nwrite, len - nwrite);
-        chain = alloc_msg_chain__(str, SGE_MSG_TYPE_NEW_MSG, sock->sid);
-        append_msg__(sock, chain);
+        sge_alloc_message(&m);
+        m->msg_type = SGE_MSG_TYPE_WRITE_DONE;
+        m->custom_id = sock->sid;
+        m->ret = len - nwrite;
+        m->ud = NULL;
+        sge_dup_string(&m->msg, msg + nwrite, len - nwrite);
+        append_msg__(sock, m);
 
         evt.arg = sock;
         evt.custom_id = sock->sid;
@@ -447,9 +447,9 @@ int sge_send_msg(sge_socket_id sid, const char* msg, size_t len) {
         evt.write_cb = handle_write_done__;
         ret = sge_add_event(sock->srv->event_mgr, &evt);
         if (SGE_ERR == ret) {
-            SGE_LIST_REMOVE(&chain->list);
-            sge_destroy_string(chain->msg);
-            sge_destroy_msg_chain(chain);
+            SGE_LIST_REMOVE(&m->entry);
+            sge_destroy_string(m->msg);
+            sge_destroy_message(m);
             return nwrite;
         }
     }
@@ -469,30 +469,6 @@ int sge_get_sock_msg(struct sge_socket* sock, struct sge_list* head) {
     return SGE_OK;
 }
 
-int sge_get_first_msg_by_sid(sge_socket_id sid, struct sge_msg_chain** chainp) {
-    struct sge_list* last;
-    struct sge_socket* sock;
-
-    sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)&sock);
-    if (NULL == sock) {
-        *chainp = NULL;
-        return SGE_ERR;
-    }
-
-    if (SGE_LIST_EMPTY(&sock->msg_list)) {
-        *chainp = NULL;
-        return SGE_ERR;
-    }
-
-    SGE_SPINLOCK_LOCK(&sock->lock);
-    last = SGE_LIST_LAST(&sock->msg_list);
-    SGE_LIST_REMOVE(last);
-    *chainp = sge_container_of(last, struct sge_msg_chain, list);
-    SGE_SPINLOCK_UNLOCK(&sock->lock);
-
-    return SGE_OK;
-}
-
 int sge_sock_msg_empty(sge_socket_id sid) {
     struct sge_socket* sock;
 
@@ -506,4 +482,17 @@ int sge_sock_msg_empty(sge_socket_id sid) {
     } else {
         return SGE_ERR;
     }
+}
+
+int sge_alloc_message(struct sge_message** msgp) {
+    struct sge_message* msg;
+    msg = (struct sge_message*)sge_get_resource(message_res_pool);
+    SGE_LIST_INIT(&msg->entry);
+
+    *msgp = msg;
+    return SGE_OK;
+}
+
+int sge_destroy_message(struct sge_message* msg) {
+    return sge_release_resource(msg);
 }

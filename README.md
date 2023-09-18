@@ -57,4 +57,4 @@ sge-service example/pyhttp/config.ini
 ```
 
 # TODO
-1. io_uring event management is not yet stable
+1. io_uring event management handles events too slowly

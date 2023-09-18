@@ -13,17 +13,9 @@ static size_t event_size__(void) {
     return sizeof(struct sge_event);
 }
 
-static size_t event_buff_size__(void) {
-    return sizeof(struct sge_event_buff);
-}
-
 static struct sge_res_pool* event_res_pool;
 static struct sge_res_pool_ops event_res_pool_ops = {
     .size = event_size__
-};
-static struct sge_res_pool* event_buff_res_pool;
-static struct sge_res_pool_ops event_buff_res_pool_ops = {
-    .size = event_buff_size__
 };
 
 static struct sge_event* dup_event__(struct sge_event* evt) {
@@ -36,18 +28,11 @@ static struct sge_event* dup_event__(struct sge_event* evt) {
 }
 
 int sge_init_event_pool(size_t size) {
-    int ret;
-
-    ret = sge_alloc_res_pool(&event_res_pool_ops, size, &event_res_pool);
-    if (SGE_OK == ret) {
-        ret = sge_alloc_res_pool(&event_buff_res_pool_ops, size, &event_buff_res_pool);
-    }
-    return ret;
+    return sge_alloc_res_pool(&event_res_pool_ops, size, &event_res_pool);
 }
 
 void sge_destroy_event_pool(void) {
     sge_destroy_res_pool(event_res_pool);
-    sge_destroy_res_pool(event_buff_res_pool);
 }
 
 void sge_register_event_mgr(struct sge_event_mgr* mgr) {
@@ -195,20 +180,6 @@ int sge_destroy_event_mgr(void) {
         mgr->ops->destroy(mgr);
     }
 
-    return SGE_OK;
-}
-
-int sge_alloc_event_buff(struct sge_event_buff** buffp) {
-    *buffp = sge_get_resource(event_buff_res_pool);
-    return SGE_OK;
-}
-
-int sge_release_event_buff(struct sge_event_buff* buff) {
-    if (NULL == buff) {
-        return SGE_ERR;
-    }
-
-    sge_release_resource(buff);
     return SGE_OK;
 }
 

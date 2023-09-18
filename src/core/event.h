@@ -2,6 +2,7 @@
 #define SGE_EVENT_H_
 
 #include "core/dict.h"
+#include "core/list.h"
 #include "core/string.h"
 
 
@@ -12,15 +13,9 @@ enum sge_event_type {
     EVENT_TYPE_TIMER = 1 << 3
 };
 struct sge_event_mgr;
-struct sge_event_buff;
 struct sge_event;
-typedef int (*fn_event_cb)(struct sge_event_buff*);
+typedef int (*fn_event_cb)(struct sge_list*);
 
-struct sge_event_buff {
-    int ret;
-    void* arg;
-    struct sge_string* buf;
-};
 struct sge_event {
     unsigned long custom_id;
     enum sge_event_type event_type;
@@ -54,9 +49,6 @@ int sge_add_event(struct sge_event_mgr* mgr, struct sge_event* evt);
 int sge_del_event(struct sge_event_mgr* mgr, unsigned long custom_id, enum sge_event_type event_type);
 int sge_poll_event(void);
 int sge_destroy_event_mgr(void);
-
-int sge_alloc_event_buff(struct sge_event_buff** buffp);
-int sge_release_event_buff(struct sge_event_buff* buff);
 
 int sge_copy_event(struct sge_event* src, struct sge_event* dest);
 

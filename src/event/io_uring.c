@@ -15,115 +15,99 @@ struct io_uring_mgr {
     struct io_uring ring;
 };
 
-struct io_arg {
-    enum sge_event_type event_type;
-    struct sge_event* evt;
-    struct sge_event_buff* evt_buff;
-};
-
-static size_t io_arg_size__(void) {
-    return sizeof(struct io_arg);
-}
-
-static struct sge_res_pool_ops io_arg_pool_ops = {
-    .size = io_arg_size__
-};
-static struct sge_res_pool* io_arg_pool;
-
-static int init_pool__(void) {
-    return sge_alloc_res_pool(&io_arg_pool_ops, 1024, &io_arg_pool);
-}
-
-static void destroy_pool__(void) {
-    sge_destroy_res_pool(io_arg_pool);
-}
-
-static int handle_accept__(struct sge_event_mgr* mgr, struct io_arg* arg, int ret) {
+static int handle_accept__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
+    struct sge_list dummy;
     struct sge_event* evt, new_evt;
-    struct sge_event_buff* buff;
     fn_event_cb cb;
 
-    evt = arg->evt;
-    buff = arg->evt_buff;
-
+    evt = (struct sge_event*)msg->ud;
     cb = evt->cb;
-    buff->ret = ret;
-    buff->arg = evt->arg;
+
+    msg->ret = ret;
+    msg->ud = evt->arg;
+    msg->msg = NULL;
 
     sge_copy_event(evt, &new_evt);
     new_evt.event_type = EVENT_TYPE_ACCEPTABLE;
     sge_add_event(mgr, &new_evt);
 
-    cb(buff);
-
-    sge_release_resource(arg);
+    SGE_LIST_INIT(&dummy);
+    SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+    cb(&dummy);
 
     return SGE_OK;
 }
 
-static int handle_read__(struct sge_event_mgr* mgr, struct io_arg* arg, int ret) {
-    struct sge_event_buff* buff;
-    struct sge_event* evt, new_evt;
+static int handle_read__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
     fn_event_cb cb;
+    struct sge_list dummy;
+    struct sge_event* evt, new_evt;
 
-    evt = arg->evt;
-    buff = arg->evt_buff;
+    evt = (struct sge_event*)msg->ud;
+    cb = evt->cb;
 
-    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "handle read fd(%d), sid(%ld), ret(%d)", evt->fd, evt->custom_id, ret);
-    if (0 != ret) {
+    if (ret > 0) {
         sge_copy_event(evt, &new_evt);
-        SGE_LOG(SGE_LOG_LEVEL_DEBUG, "new_evt fd(%d), sid(%ld)", new_evt.fd, new_evt.custom_id);
         new_evt.event_type = EVENT_TYPE_READABLE;
         sge_add_event(mgr, &new_evt);
     }
 
-    cb = evt->cb;
-    buff->ret = ret;
-
     // close by peer
-    if (0 == buff->ret) {
-        sge_destroy_string(buff->buf);
-        buff->buf = NULL;
+    if (ret <= 0) {
+        sge_destroy_string(msg->msg);
+        msg->msg = NULL;
+        msg->msg_type = SGE_MSG_TYPE_CLOSED;
+        if (ret < 0) {
+            SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "read socket error. fd(%d) cid(%ld) errno(%d) reason(%s)", evt->fd, evt->custom_id, -ret, strerror(-ret));
+        }
     } else {
-        sge_set_string_len(buff->buf, ret);
+        sge_set_string_len(msg->msg, ret);
+        msg->msg_type = SGE_MSG_TYPE_NEW_MSG;
     }
 
-    cb(buff);
-
-    sge_release_resource(arg);
+    msg->ud = evt->arg;
+    msg->ret = ret;
+    msg->custom_id = evt->custom_id;
+    SGE_LIST_INIT(&dummy);
+    SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+    cb(&dummy);
 
     return SGE_OK;
 }
 
-static int handle_write__(struct sge_event_mgr* mgr, struct io_arg* arg, int ret) {
-    struct sge_event_buff* evt_buff;
-    struct sge_event* evt, new_evt;
-    struct sge_string* buf;
+static int handle_write__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
+    const char* p;
+    fn_event_cb cb;
+    struct sge_list dummy;
+    struct sge_event* evt;
+    struct sge_message* ret_msg;
 
+    sge_unused(mgr);
     sge_unused(ret);
+    sge_unused(p);
 
-    evt = arg->evt;
-    evt_buff = arg->evt_buff;
-    buf = evt_buff->buf;
+    evt = (struct sge_event*)msg->ud;
+    cb = evt->write_cb;
 
-    if (SGE_OK != sge_sock_msg_empty(evt->custom_id)) {
-        sge_copy_event(evt, &new_evt);
-        new_evt.event_type = EVENT_TYPE_WRITEABLE;
-        sge_add_event(mgr, &new_evt);
-    } else {
-        evt_buff->buf = NULL;
-        evt->write_cb(evt_buff);
-    }
+    sge_alloc_message(&ret_msg);
+    ret_msg->custom_id = evt->custom_id;
+    ret_msg->ud = evt->arg;
+    ret_msg->ret = sge_string_data(msg->msg, &p);
+    ret_msg->msg = NULL;
+    ret_msg->msg_type = SGE_MSG_TYPE_WRITE_DONE;
 
-    sge_destroy_string(buf);
-    sge_release_event_buff(evt_buff);
-    sge_release_resource(arg);
+    SGE_LIST_INIT(&dummy);
+    SGE_LIST_ADD_TAIL(&dummy, &ret_msg->entry);
 
+    cb(&dummy);
+
+    sge_destroy_string(msg->msg);
+    sge_destroy_message(msg);
     return SGE_OK;
 }
 
 static int prep_accept__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
-    struct io_arg* arg;
+    struct sge_message* msg;
     struct io_uring_sqe* sqe;
 
     sqe = io_uring_get_sqe(&io_mgr->ring);
@@ -132,22 +116,19 @@ static int prep_accept__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
         return SGE_ERR;
     }
 
-    arg = sge_get_resource(io_arg_pool);
-    sge_alloc_event_buff(&arg->evt_buff);
-    arg->evt = evt;
-    arg->evt_buff->arg = evt->arg;
-    arg->evt_buff->buf = NULL;
-    arg->event_type = EVENT_TYPE_ACCEPTABLE;
+    sge_alloc_message(&msg);
+    msg->ud = evt;
+    msg->msg_type = SGE_MSG_TYPE_NEW_CONN;
 
     io_uring_prep_accept(sqe, evt->fd, NULL, NULL, 0);
-    io_uring_sqe_set_data(sqe, arg);
+    io_uring_sqe_set_data(sqe, msg);
 
     return SGE_OK;
 }
 
 static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
     const char* data;
-    struct io_arg* arg;
+    struct sge_message* msg;
     struct io_uring_sqe* sqe;
 
     sqe = io_uring_get_sqe(&io_mgr->ring);
@@ -156,15 +137,14 @@ static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
         return SGE_ERR;
     }
 
-    arg = sge_get_resource(io_arg_pool);
-    sge_alloc_event_buff(&arg->evt_buff);
-    arg->evt = evt;
-    arg->event_type = EVENT_TYPE_READABLE;
-    arg->evt_buff->arg = evt->arg;
-    sge_alloc_string(SGE_STRING_SIZE, &arg->evt_buff->buf);
-    sge_string_data(arg->evt_buff->buf, &data);
+    sge_alloc_message(&msg);
+    msg->msg_type = SGE_MSG_TYPE_NEW_MSG;
+    msg->custom_id = evt->custom_id;
+    msg->ud = evt;
+    sge_alloc_string(SGE_STRING_SIZE, &msg->msg);
+    sge_string_data(msg->msg, &data);
     io_uring_prep_read(sqe, evt->fd, (void*)data, SGE_STRING_SIZE, 0);
-    io_uring_sqe_set_data(sqe, arg);
+    io_uring_sqe_set_data(sqe, msg);
 
     return SGE_OK;
 }
@@ -172,35 +152,36 @@ static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
 static int prep_write__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
     size_t msglen;
     const char* data;
-    struct io_arg* arg;
     struct io_uring_sqe* sqe;
-    struct sge_msg_chain* chain;
+    struct sge_list head;
+    struct sge_list* iter, *next;
+    struct sge_socket* sock;
+    struct sge_message* msg;
 
-    sge_get_first_msg_by_sid(evt->custom_id, &chain);
-    if (NULL == chain) {
-        return SGE_OK;
-    }
-
-    sqe = io_uring_get_sqe(&io_mgr->ring);
-    if (NULL == sqe) {
-        SGE_LOG(SGE_LOG_LEVEL_ERROR, "get io_uring sqe error.");
+    if (SGE_ERR == sge_get_socket(evt->custom_id, &sock)) {
         return SGE_ERR;
     }
 
-    arg = sge_get_resource(io_arg_pool);
-    sge_alloc_event_buff(&arg->evt_buff);
-    arg->event_type = EVENT_TYPE_WRITEABLE;
-    arg->evt = evt;
-    arg->evt_buff->arg = evt->arg;
+    sge_get_sock_msg(sock, &head);
+    if (SGE_LIST_EMPTY(&head)) {
+        return SGE_OK;
+    }
 
-    msglen = sge_string_data(chain->msg, &data);
-    sge_dup_string(&arg->evt_buff->buf, data, msglen);
-    sge_string_data(arg->evt_buff->buf, &data);
-    io_uring_prep_write(sqe, evt->fd, data, msglen, 0);
-    io_uring_sqe_set_data(sqe, arg);
+    SGE_LIST_FOREACH_SAFE(iter, next, &head) {
+        msg = sge_container_of(iter, struct sge_message, entry);
+        msg->ud = evt;
+        sqe = io_uring_get_sqe(&io_mgr->ring);
+        if (NULL == sqe) {
+            SGE_LOG(SGE_LOG_LEVEL_WARN, "no enough submit item in io_uring.");
+            return SGE_OK;
+        }
 
-    sge_destroy_string(chain->msg);
-    sge_destroy_msg_chain(chain);
+        msglen = sge_string_data(msg->msg, &data);
+        io_uring_prep_write(sqe, evt->fd, data, msglen, 0);
+        io_uring_sqe_set_data(sqe, msg);
+
+        SGE_LIST_REMOVE(&msg->entry);
+    }
 
     return SGE_OK;
 }
@@ -209,16 +190,10 @@ static int io_uring_init__(struct sge_event_mgr* mgr) {
     int ret;
     struct io_uring_mgr* io_mgr;
 
-    ret = init_pool__();
-    if (SGE_ERR == ret) {
-        return SGE_ERR;
-    }
-
     io_mgr = sge_malloc(sizeof(struct io_uring_mgr));
     ret = io_uring_queue_init(1024, &io_mgr->ring, 0);
     if (ret < 0) {
         SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "init io_uring error. reason(%s)", strerror(errno));
-        destroy_pool__();
         return SGE_ERR;
     }
 
@@ -260,7 +235,7 @@ static int io_uring_del__(struct sge_event* evt, struct sge_event* req_evt) {
 
 static int io_uring_poll__(struct sge_event_mgr* mgr) {
     int ret;
-    struct io_arg* arg;
+    struct sge_message* msg;
     struct io_uring_cqe *cqe;
     struct __kernel_timespec timespec = {
         .tv_nsec = 100000000,
@@ -274,17 +249,17 @@ static int io_uring_poll__(struct sge_event_mgr* mgr) {
     }
 
     ret = cqe->res;
-    arg = io_uring_cqe_get_data(cqe);
+    msg = io_uring_cqe_get_data(cqe);
 
     io_uring_cqe_seen(&io_mgr->ring, cqe);
-    if (arg->event_type & EVENT_TYPE_ACCEPTABLE) {
-        handle_accept__(mgr, arg, ret);
+    if (msg->msg_type & SGE_MSG_TYPE_NEW_CONN) {
+        handle_accept__(mgr, msg, ret);
     }
-    if (arg->event_type & EVENT_TYPE_READABLE) {
-        handle_read__(mgr, arg, ret);
+    if (msg->msg_type & SGE_MSG_TYPE_NEW_MSG) {
+        handle_read__(mgr, msg, ret);
     }
-    if (arg->event_type & EVENT_TYPE_WRITEABLE) {
-        handle_write__(mgr, arg, ret);
+    if (msg->msg_type & SGE_MSG_TYPE_WRITE_DONE) {
+        handle_write__(mgr, msg, ret);
     }
 
     return 1;
@@ -297,8 +272,6 @@ static int epoll_destroy__(struct sge_event_mgr* mgr) {
     io_uring_queue_exit(&io_mgr->ring);
     close(io_mgr->fd);
     sge_free(io_mgr);
-
-    destroy_pool__();
 
     return SGE_OK;
 }

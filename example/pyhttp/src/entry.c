@@ -173,10 +173,10 @@ error:
     return SGE_ERR;
 }
 
-static int py_handle_new_conn__(struct pyhttp* pyhttp, struct sge_msg_chain* chain) {
+static int py_handle_new_conn__(struct pyhttp* pyhttp, struct sge_message* msg) {
     PyObject* py_sid, *py_result;
 
-    py_sid = PyLong_FromUnsignedLong(chain->custom_id);
+    py_sid = PyLong_FromUnsignedLong(msg->custom_id);
     CALL_PYTHON_FUNC(py_result, pyhttp->py_handle_new_conn_fn, "O", py_sid);
 
     Py_XDECREF(py_sid);
@@ -185,10 +185,10 @@ static int py_handle_new_conn__(struct pyhttp* pyhttp, struct sge_msg_chain* cha
     return SGE_OK;
 }
 
-static int py_handle_closed__(struct pyhttp* pyhttp, struct sge_msg_chain* chain) {
+static int py_handle_closed__(struct pyhttp* pyhttp, struct sge_message* msg) {
     PyObject* py_sid, *py_result;
 
-    py_sid = PyLong_FromUnsignedLong(chain->custom_id);
+    py_sid = PyLong_FromUnsignedLong(msg->custom_id);
     CALL_PYTHON_FUNC(py_result, pyhttp->py_handle_close_fn, "O", py_sid);
 
     Py_XDECREF(py_sid);
@@ -197,14 +197,14 @@ static int py_handle_closed__(struct pyhttp* pyhttp, struct sge_msg_chain* chain
     return SGE_OK;
 }
 
-static int py_handle_msg__(struct pyhttp* pyhttp, struct sge_msg_chain* chain) {
-    const char* msg;
-    size_t msg_len;
+static int py_handle_msg__(struct pyhttp* pyhttp, struct sge_message* msg) {
+    const char* buf;
+    size_t buf_len;
     PyObject* py_sid, *py_msg, *py_result;
 
-    msg_len = sge_string_data(chain->msg, &msg);
-    py_sid = PyLong_FromUnsignedLong(chain->custom_id);
-    py_msg = PyUnicode_FromStringAndSize(msg, msg_len);
+    buf_len = sge_string_data(msg->msg, &buf);
+    py_sid = PyLong_FromUnsignedLong(msg->custom_id);
+    py_msg = PyUnicode_FromStringAndSize(buf, buf_len);
     CALL_PYTHON_FUNC(py_result, pyhttp->py_handle_msg_fn, "OO", py_sid, py_msg);
 
     Py_XDECREF(py_sid);
@@ -217,7 +217,7 @@ static int py_handle_msg__(struct pyhttp* pyhttp, struct sge_msg_chain* chain) {
 static int pyhttp_handle__(struct sge_module* module, struct sge_list* msg_list) {
     int closed;
     struct sge_list* iter, *next;
-    struct sge_msg_chain* chain;
+    struct sge_message* msg;
     struct pyhttp* pyhttp;
     PyGILState_STATE py_state;
 
@@ -226,28 +226,28 @@ static int pyhttp_handle__(struct sge_module* module, struct sge_list* msg_list)
 
     py_state = PyGILState_Ensure();
     SGE_LIST_FOREACH_SAFE(iter, next, msg_list) {
-        chain = sge_container_of(iter, struct sge_msg_chain, list);
-        if (chain->msg_type == SGE_MSG_TYPE_NEW_CONN) {
-            py_handle_new_conn__(pyhttp, chain);
+        msg = sge_container_of(iter, struct sge_message, entry);
+        if (msg->msg_type == SGE_MSG_TYPE_NEW_CONN) {
+            py_handle_new_conn__(pyhttp, msg);
         }
 
-        if (chain->msg_type == SGE_MSG_TYPE_CLOSED) {
-            py_handle_closed__(pyhttp, chain);
+        if (msg->msg_type == SGE_MSG_TYPE_CLOSED) {
+            py_handle_closed__(pyhttp, msg);
             closed = 1;
         }
 
-        if (chain->msg_type == SGE_MSG_TYPE_NEW_MSG) {
-            py_handle_msg__(pyhttp, chain);
+        if (msg->msg_type == SGE_MSG_TYPE_NEW_MSG) {
+            py_handle_msg__(pyhttp, msg);
         }
 
         SGE_LIST_REMOVE(iter);
-        sge_destroy_string(chain->msg);
-        sge_destroy_msg_chain(chain);
+        sge_destroy_string(msg->msg);
+        sge_destroy_message(msg);
     }
     PyGILState_Release(py_state);
 
     if (closed) {
-        sge_destroy_socket_by_sid(chain->custom_id);
+        sge_destroy_socket_by_sid(msg->custom_id);
     }
 
     return SGE_OK;

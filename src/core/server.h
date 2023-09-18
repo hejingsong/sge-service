@@ -26,14 +26,17 @@ struct sge_server;
 enum sge_msg_type {
     SGE_MSG_TYPE_NEW_CONN = 1 << 0,
     SGE_MSG_TYPE_NEW_MSG = 1 << 1,
-    SGE_MSG_TYPE_CLOSED = 1 << 2
+    SGE_MSG_TYPE_CLOSED = 1 << 2,
+    SGE_MSG_TYPE_WRITE_DONE = 1 << 3
 };
 
-struct sge_msg_chain {
-    struct sge_string* msg;
+struct sge_message {
     unsigned long custom_id;
-    struct sge_list list;
+    ssize_t ret;
+    struct sge_string* msg;
     enum sge_msg_type msg_type;
+    struct sge_list entry;
+    void* ud;
 };
 
 struct sge_socket {
@@ -64,14 +67,14 @@ int sge_destroy_socket_mgr(void);
 int sge_alloc_socket(int fd, struct sge_socket** sockp);
 int sge_destroy_socket(struct sge_socket* sock);
 int sge_destroy_socket_by_sid(sge_socket_id sid);
+int sge_get_socket(sge_socket_id sid, struct sge_socket** sock);
 
 int sge_create_listener(const char* server_addr, struct sge_server* server);
 
-int sge_destroy_msg_chain(struct sge_msg_chain* chain);
-
 int sge_send_msg(sge_socket_id sid, const char* msg, size_t len);
 int sge_get_sock_msg(struct sge_socket* sock, struct sge_list* head);
-int sge_get_first_msg_by_sid(sge_socket_id sid, struct sge_msg_chain** chainp);
-int sge_sock_msg_empty(sge_socket_id sid);
+
+int sge_alloc_message(struct sge_message** msgp);
+int sge_destroy_message(struct sge_message* msg);
 
 #endif

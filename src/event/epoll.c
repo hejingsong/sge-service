@@ -33,39 +33,65 @@ static int set_nonblock__(int fd) {
     return SGE_OK;
 }
 
+static struct sge_message* create_message__(unsigned long cid, enum sge_msg_type type, ssize_t ret, void* ud) {
+    struct sge_message* msg;
+
+    sge_alloc_message(&msg);
+    msg->custom_id = cid;
+    msg->msg = NULL;
+    msg->msg_type = type;
+    msg->ret = ret;
+    msg->ud = ud;
+
+    return msg;
+}
+
 static int handle_accept__(struct sge_event* evt) {
     int fd;
     struct sockaddr_in addr;
     socklen_t socklen;
-    struct sge_event_buff* buff;
+    struct sge_list dummy;
+    struct sge_message* msg;
 
+    SGE_LIST_INIT(&dummy);
     while(1) {
         fd = accept(evt->fd, (struct sockaddr*)&addr, &socklen);
         if (fd < 0) {
             if (EAGAIN == errno) {
-                return SGE_OK;
+                break;
             }
             if (EINTR == errno) {
                 continue;
             }
             SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "accept error. reason(%s) fd(%d)", strerror(errno), evt->fd);
-            return SGE_ERR;
+            break;
         }
-        sge_alloc_event_buff(&buff);
-        buff->arg = evt->arg;
-        buff->ret = fd;
-        evt->cb(buff);
+        sge_alloc_message(&msg);
+        msg->custom_id = 0;
+        msg->msg = NULL;
+        msg->msg_type = SGE_MSG_TYPE_NEW_CONN;
+        msg->ret = fd;
+        msg->ud = evt->arg;
+        SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
     }
+
+    if (!SGE_LIST_EMPTY(&dummy)) {
+        evt->cb(&dummy);
+    }
+
+    return SGE_OK;
 }
 
 static int do_handle_read__(struct sge_event* evt) {
-    ssize_t ret;
+    ssize_t ret, offset;
     char data[SGE_STRING_SIZE];
-    struct sge_string* str;
-    struct sge_event_buff* buff;
+    struct sge_list dummy;
+    struct sge_message* msg;
 
+    offset = 0;
+    SGE_LIST_INIT(&dummy);
     while(1) {
-        ret = read(evt->fd, data, SGE_STRING_SIZE);
+        ret = read(evt->fd, data + offset, SGE_STRING_SIZE - offset);
         if (ret < 0) {
             if (EAGAIN == errno) {
                 break;
@@ -74,27 +100,35 @@ static int do_handle_read__(struct sge_event* evt) {
                 continue;
             }
             SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "read socket error. fd(%d) cid(%ld) errno(%d) reason(%s)", evt->fd, evt->custom_id, errno, strerror(errno));
-            return SGE_ERR;
+            msg = create_message__(evt->custom_id, SGE_MSG_TYPE_CLOSED, ret, evt->arg);
+            SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+            break;
         }
 
         // peer closed
         if (ret == 0) {
-            sge_alloc_event_buff(&buff);
-            buff->ret = ret;
-            buff->buf = NULL;
-            buff->arg = evt->arg;
-            evt->cb(buff);
+            msg = create_message__(evt->custom_id, SGE_MSG_TYPE_CLOSED, ret, evt->arg);
+            SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
             break;
         }
 
-        if (ret <= SGE_STRING_SIZE) {
-            sge_alloc_event_buff(&buff);
-            sge_dup_string(&str, data, ret);
-            buff->ret = ret;
-            buff->buf = str;
-            buff->arg = evt->arg;
-            evt->cb(buff);
+        offset += ret;
+        if (offset == SGE_STRING_SIZE) {
+            msg = create_message__(evt->custom_id, SGE_MSG_TYPE_NEW_MSG, offset, evt->arg);
+            sge_dup_string(&msg->msg, data, offset);
+            SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+            offset = 0;
         }
+    }
+
+    if (offset > 0) {
+        msg = create_message__(evt->custom_id, SGE_MSG_TYPE_NEW_MSG, offset, evt->arg);
+        sge_dup_string(&msg->msg, data, offset);
+        SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+    }
+
+    if (!SGE_LIST_EMPTY(&dummy)) {
+        evt->cb(&dummy);
     }
 
     return SGE_OK;
@@ -114,14 +148,13 @@ static int handle_read__(struct sge_event* evt) {
 }
 
 static int handle_write__(struct sge_event* evt) {
-    size_t nwrite, datalen, total;
     ssize_t ret;
     const char* data;
+    size_t nwrite, datalen, total;
     struct sge_socket* sock;
-    struct sge_event_buff* buff;
+    struct sge_message* msg;
     struct sge_list msg_list;
     struct sge_list* iter, *next;
-    struct sge_msg_chain* chain;
 
     SGE_LIST_INIT(&msg_list);
 
@@ -132,8 +165,8 @@ static int handle_write__(struct sge_event* evt) {
 
     total = 0;
     SGE_LIST_FOREACH_SAFE(iter, next, &msg_list) {
-        chain = sge_container_of(iter, struct sge_msg_chain, list);
-        datalen = sge_string_data(chain->msg, &data);
+        msg = sge_container_of(iter, struct sge_message, entry);
+        datalen = sge_string_data(msg->msg, &data);
 
         nwrite = 0;
         while(nwrite < datalen) {
@@ -152,17 +185,21 @@ static int handle_write__(struct sge_event* evt) {
             total += ret;
         }
 
-        SGE_LIST_REMOVE(&chain->list);
-        sge_destroy_string(chain->msg);
-        sge_destroy_msg_chain(chain);
+        SGE_LIST_REMOVE(iter);
+        sge_destroy_string(msg->msg);
+        sge_destroy_message(msg);
     }
 
 done:
-    sge_alloc_event_buff(&buff);
-    buff->arg = evt->arg;
-    buff->ret = total;
-    buff->buf = NULL;
-    evt->write_cb(buff);
+    SGE_LIST_INIT(&msg_list);
+    sge_alloc_message(&msg);
+    msg->custom_id = evt->custom_id;
+    msg->ud = evt->arg;
+    msg->ret = total;
+    msg->msg = NULL;
+    msg->msg_type = SGE_MSG_TYPE_WRITE_DONE;
+    SGE_LIST_ADD_TAIL(&msg_list, &msg->entry);
+    evt->write_cb(&msg_list);
 
     return SGE_OK;
 }

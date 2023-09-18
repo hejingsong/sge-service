@@ -118,7 +118,7 @@ int sge_handle_module(struct sge_module* module) {
     status = atomic_load_explicit(&module->handle_status, memory_order_acquire);
 
     if (status == 1) {
-        SGE_LOG(SGE_LOG_LEVEL_WARN, "module(%s) already execute handler", module_name);
+        SGE_LOG(SGE_LOG_LEVEL_DEBUG, "module(%s) already execute handler", module_name);
         return SGE_OK;
     }
 
