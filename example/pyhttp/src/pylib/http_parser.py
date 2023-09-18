@@ -82,6 +82,9 @@ def parse_request_body(headers, str_body):
         return (False, PARSE_INCOMPLETE)
 
     body_len = int(headers["content-length"])
+    if len(str_body) != body_len:
+        return (False, PARSE_INCOMPLETE)
+
     body = {}
     content_type = headers['content-type']
     if content_type.find("application/x-www-form-urlencoded") != -1:
