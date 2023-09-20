@@ -113,6 +113,12 @@ static int init_python_env__(struct pyhttp* pyhttp) {
         }
     }
 
+#if (PY_MAJOR_VERSION < 3) || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION < 9)
+    PyEval_InitThreads();
+#endif
+
+    SGE_LOG(SGE_LOG_LEVEL_DEBUG, "init python env success. python version(%s)", PY_VERSION);
+
     module = pyhttp->module;
     cfg = module->ctx->cfg;
 
@@ -124,7 +130,6 @@ static int init_python_env__(struct pyhttp* pyhttp) {
     py_lib_path_len = sprintf(py_lib_path, "%s/src/pylib", workspace);
     py_lib_path[py_lib_path_len + 1] = '\0';
 
-    PyEval_InitThreads();
     sys_path = PySys_GetObject("path");
     local_path = PyUnicode_FromStringAndSize(py_lib_path, py_lib_path_len);
     PyList_Insert(sys_path, 0, local_path);
@@ -284,7 +289,7 @@ static int pyhttp_init__(struct sge_module* module) {
         SGE_LOG(SGE_LOG_LEVEL_ERROR, "create listen socket error.");
         goto error;
     }
-    SGE_LOG(SGE_LOG_LEVEL_INFO, "module(%s) create server(%s) success", module_name, server_addr);
+    SGE_LOG(SGE_LOG_LEVEL_INFO, "module(%s) create server(%s) success, use %s event manager.", module_name, server_addr, server->event_mgr->type_name);
 
     pyhttp = sge_malloc(sizeof(struct pyhttp));
     pyhttp->module = module;
@@ -292,7 +297,6 @@ static int pyhttp_init__(struct sge_module* module) {
     ret = init_python_env__(pyhttp);
     if (SGE_OK != ret) {
         SGE_LOG(SGE_LOG_LEVEL_ERROR, "init python env error.");
-        PyErr_Print();
         goto init_py_env_err;
     }
 
