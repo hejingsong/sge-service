@@ -10,7 +10,7 @@ struct sge_cond {
 };
 
 int sge_alloc_cond(struct sge_cond** condp) {
-    struct sge_cond* cond;
+    struct sge_cond* cond = NULL;
 
     cond = sge_calloc(sizeof(struct sge_cond));
     if (0 != pthread_mutex_init(&cond->mutex, NULL)) {
@@ -59,7 +59,9 @@ int sge_notify_cond(struct sge_cond* cond) {
         return SGE_ERR;
     }
 
-    pthread_cond_broadcast(&cond->cond);
+    pthread_mutex_lock(&cond->mutex);
+    pthread_cond_signal(&cond->cond);
+    pthread_mutex_unlock(&cond->mutex);
 
     return SGE_OK;
 }

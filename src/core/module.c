@@ -9,7 +9,7 @@
 
 
 int sge_alloc_module(const char* name, size_t name_len, struct sge_module** modulep) {
-    struct sge_module* module;
+    struct sge_module* module = NULL;
 
     if (NULL == name || name_len <= 0) {
         return SGE_ERR;
@@ -28,11 +28,11 @@ int sge_alloc_module(const char* name, size_t name_len, struct sge_module** modu
 }
 
 int sge_init_module(struct sge_module* module) {
-    void* handler;
+    void* handler = NULL;
     char dlpath[1024];
-    const char* module_name, *dldir;
-    struct sge_config* cfg;
-    struct sge_module_ops* ops;
+    const char* module_name = NULL, *dldir = NULL;
+    struct sge_config* cfg = NULL;
+    struct sge_module_ops* ops = NULL;
 
     if (NULL == module) {
         return SGE_ERR;
@@ -105,8 +105,8 @@ int sge_add_module_msg(struct sge_module* module, struct sge_list* msg) {
 }
 
 int sge_handle_module(struct sge_module* module) {
-    int status, ret;
-    const char* module_name;
+    int status = 0, ret = 0;
+    const char* module_name = NULL;
     struct sge_list msg_list;
 
     if (NULL == module) {

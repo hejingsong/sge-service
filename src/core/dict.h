@@ -12,6 +12,7 @@ int sge_alloc_dict(struct sge_dict_ops* ops, struct sge_dict** dictp);
 int sge_insert_dict(struct sge_dict* d, const void* key, size_t key_len, const void* data);
 int sge_remove_dict(struct sge_dict* d, const void* key, size_t key_len);
 int sge_get_dict(struct sge_dict* d, const void* key, size_t key_len, void** datap);
+int sge_empty_dict(struct sge_dict* d);
 int sge_destroy_dict(struct sge_dict* d);
 
 #endif

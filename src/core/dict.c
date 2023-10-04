@@ -92,8 +92,8 @@ static void get_dict_entry__(struct sge_dict* d, const void* key, size_t key_len
 }
 
 static int find_dict__(struct sge_dict_ops* ops, struct sge_dict_entry* entry, const void* key, size_t key_len, struct sge_dict_node** nodep) {
-    struct sge_list* iter;
-    struct sge_dict_node* node;
+    struct sge_list* iter = NULL;
+    struct sge_dict_node* node = NULL;
 
     SGE_LIST_FOREACH(iter, &entry->list) {
         node = sge_container_of(iter, struct sge_dict_node, list);
@@ -118,9 +118,9 @@ struct sge_dict_ops integer_dict_ops = {
 };
 
 int sge_alloc_dict(struct sge_dict_ops* ops, struct sge_dict** dictp) {
-    int i;
-    struct sge_dict* dict;
-    struct sge_dict_entry* entry;
+    int i = 0;
+    struct sge_dict* dict = NULL;
+    struct sge_dict_entry* entry = NULL;
 
     if (NULL == ops) {
         return SGE_ERR;
@@ -141,8 +141,8 @@ int sge_alloc_dict(struct sge_dict_ops* ops, struct sge_dict** dictp) {
 }
 
 int sge_insert_dict(struct sge_dict* d, const void* key, size_t key_len, const void* data) {
-    struct sge_dict_node* node;
-    struct sge_dict_entry* entry;
+    struct sge_dict_node* node = NULL;
+    struct sge_dict_entry* entry = NULL;
 
     if (NULL == d || NULL == key || key_len <= 0 || NULL == data) {
         return SGE_ERR;
@@ -165,8 +165,8 @@ int sge_insert_dict(struct sge_dict* d, const void* key, size_t key_len, const v
 }
 
 int sge_remove_dict(struct sge_dict* d, const void* key, size_t key_len) {
-    struct sge_dict_node* node;
-    struct sge_dict_entry* entry;
+    struct sge_dict_node* node = NULL;
+    struct sge_dict_entry* entry = NULL;
 
     if (NULL == d || NULL == key || key_len <= 0) {
         return SGE_ERR;
@@ -185,8 +185,8 @@ int sge_remove_dict(struct sge_dict* d, const void* key, size_t key_len) {
 }
 
 int sge_get_dict(struct sge_dict* d, const void* key, size_t key_len, void** datap) {
-    struct sge_dict_node* node;
-    struct sge_dict_entry* entry;
+    struct sge_dict_node* node = NULL;
+    struct sge_dict_entry* entry = NULL;
 
     if (NULL == d || NULL == key || key_len <= 0) {
         *datap = NULL;
@@ -203,11 +203,19 @@ int sge_get_dict(struct sge_dict* d, const void* key, size_t key_len, void** dat
     return SGE_OK;
 }
 
+int sge_empty_dict(struct sge_dict* d) {
+    if (NULL == d) {
+        return SGE_ERR;
+    }
+
+    return d->count == 0;
+}
+
 int sge_destroy_dict(struct sge_dict* d) {
-    int i;
-    struct sge_dict_node* node;
-    struct sge_dict_entry* entry;
-    struct sge_list* iter, *next;
+    int i = 0;
+    struct sge_dict_node* node = NULL;
+    struct sge_dict_entry* entry = NULL;
+    struct sge_list* iter = NULL, *next = NULL;
 
     for (i = 0; i < SGE_DICT_SLOT_SIZE; ++i) {
         entry = &(d->entries[i]);

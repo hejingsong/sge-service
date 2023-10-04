@@ -57,4 +57,3 @@ sge-service example/pyhttp/config.ini
 ```
 
 # TODO
-1. io_uring event management handles events too slowly

@@ -289,7 +289,7 @@ static int pyhttp_init__(struct sge_module* module) {
         SGE_LOG(SGE_LOG_LEVEL_ERROR, "create listen socket error.");
         goto error;
     }
-    SGE_LOG(SGE_LOG_LEVEL_INFO, "module(%s) create server(%s) success, use %s event manager.", module_name, server_addr, server->event_mgr->type_name);
+    SGE_LOG(SGE_LOG_LEVEL_INFO, "module(%s) create server(%s) success, use %s.", module_name, server_addr, server->event_mgr->type_name);
 
     pyhttp = sge_malloc(sizeof(struct pyhttp));
     pyhttp->module = module;

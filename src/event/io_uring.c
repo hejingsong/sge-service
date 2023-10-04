@@ -17,8 +17,8 @@ struct io_uring_mgr {
 
 static int handle_accept__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
     struct sge_list dummy;
-    struct sge_event* evt, new_evt;
-    fn_event_cb cb;
+    struct sge_event* evt = NULL, new_evt;
+    fn_event_cb cb = NULL;
 
     evt = (struct sge_event*)msg->ud;
     cb = evt->cb;
@@ -39,9 +39,9 @@ static int handle_accept__(struct sge_event_mgr* mgr, struct sge_message* msg, i
 }
 
 static int handle_read__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
-    fn_event_cb cb;
+    fn_event_cb cb = NULL;
     struct sge_list dummy;
-    struct sge_event* evt, new_evt;
+    struct sge_event* evt = NULL, new_evt;
 
     evt = (struct sge_event*)msg->ud;
     cb = evt->cb;
@@ -76,11 +76,11 @@ static int handle_read__(struct sge_event_mgr* mgr, struct sge_message* msg, int
 }
 
 static int handle_write__(struct sge_event_mgr* mgr, struct sge_message* msg, int ret) {
-    const char* p;
-    fn_event_cb cb;
+    const char* p = NULL;
+    fn_event_cb cb = NULL;
+    struct sge_event* evt = NULL;
+    struct sge_message* ret_msg = NULL;
     struct sge_list dummy;
-    struct sge_event* evt;
-    struct sge_message* ret_msg;
 
     sge_unused(mgr);
     sge_unused(ret);
@@ -107,8 +107,8 @@ static int handle_write__(struct sge_event_mgr* mgr, struct sge_message* msg, in
 }
 
 static int prep_accept__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
-    struct sge_message* msg;
-    struct io_uring_sqe* sqe;
+    struct sge_message* msg = NULL;
+    struct io_uring_sqe* sqe = NULL;
 
     sqe = io_uring_get_sqe(&io_mgr->ring);
     if (NULL == sqe) {
@@ -127,9 +127,9 @@ static int prep_accept__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
 }
 
 static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
-    const char* data;
-    struct sge_message* msg;
-    struct io_uring_sqe* sqe;
+    const char* data = NULL;
+    struct sge_message* msg = NULL;
+    struct io_uring_sqe* sqe = NULL;
 
     sqe = io_uring_get_sqe(&io_mgr->ring);
     if (NULL == sqe) {
@@ -150,13 +150,13 @@ static int prep_read__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
 }
 
 static int prep_write__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
-    size_t msglen;
-    const char* data;
-    struct io_uring_sqe* sqe;
+    size_t msglen = 0;
+    const char* data = NULL;
+    struct io_uring_sqe* sqe = NULL;
+    struct sge_list* iter = NULL, *next = NULL;
+    struct sge_socket* sock = NULL;
+    struct sge_message* msg = NULL;
     struct sge_list head;
-    struct sge_list* iter, *next;
-    struct sge_socket* sock;
-    struct sge_message* msg;
 
     if (SGE_ERR == sge_get_socket(evt->custom_id, &sock)) {
         return SGE_ERR;
@@ -187,8 +187,8 @@ static int prep_write__(struct io_uring_mgr* io_mgr, struct sge_event* evt) {
 }
 
 static int io_uring_init__(struct sge_event_mgr* mgr) {
-    int ret;
-    struct io_uring_mgr* io_mgr;
+    int ret = 0;
+    struct io_uring_mgr* io_mgr = NULL;
 
     io_mgr = sge_malloc(sizeof(struct io_uring_mgr));
     ret = io_uring_queue_init(1024, &io_mgr->ring, 0);
@@ -203,7 +203,7 @@ static int io_uring_init__(struct sge_event_mgr* mgr) {
 }
 
 static int io_uring_add__(struct sge_event_mgr* mgr, struct sge_event* new_evt, enum sge_event_type old_event_type) {
-    struct io_uring_mgr* io_mgr;
+    struct io_uring_mgr* io_mgr = NULL;
 
     sge_unused(old_event_type);
 
@@ -234,16 +234,12 @@ static int io_uring_del__(struct sge_event* evt, struct sge_event* req_evt) {
 }
 
 static int io_uring_poll__(struct sge_event_mgr* mgr) {
-    int ret;
-    struct sge_message* msg;
-    struct io_uring_cqe *cqe;
-    struct __kernel_timespec timespec = {
-        .tv_nsec = 100000000,
-        .tv_sec = 0
-    };
+    int ret = 0;
+    struct sge_message* msg = NULL;
+    struct io_uring_cqe *cqe = NULL;
     struct io_uring_mgr* io_mgr = (struct io_uring_mgr*)mgr->private_data;
 
-    io_uring_wait_cqe_timeout(&io_mgr->ring, &cqe, &timespec);
+    io_uring_wait_cqe_timeout(&io_mgr->ring, &cqe, NULL);
     if (NULL == cqe) {
         return SGE_OK;
     }
@@ -265,10 +261,9 @@ static int io_uring_poll__(struct sge_event_mgr* mgr) {
     return 1;
 }
 
-static int epoll_destroy__(struct sge_event_mgr* mgr) {
-    struct io_uring_mgr* io_mgr;
+static int io_uring_destroy__(struct sge_event_mgr* mgr) {
+    struct io_uring_mgr* io_mgr = (struct io_uring_mgr*)mgr->private_data;
 
-    io_mgr = (struct io_uring_mgr*)mgr->private_data;
     io_uring_queue_exit(&io_mgr->ring);
     close(io_mgr->fd);
     sge_free(io_mgr);
@@ -281,7 +276,7 @@ static struct sge_event_mgr_ops io_uring_event_ops = {
     .del = io_uring_del__,
     .poll = io_uring_poll__,
     .init = io_uring_init__,
-    .destroy = epoll_destroy__
+    .destroy = io_uring_destroy__
 };
 
 static struct sge_event_mgr io_uring_event_mgr = {

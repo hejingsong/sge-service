@@ -16,8 +16,8 @@ static size_t string_size__(void) {
 }
 
 static int alloc_string_ex__(size_t size, struct sge_string** strp) {
-    size_t msize;
-    struct sge_string* s;
+    size_t msize = 0;
+    struct sge_string* s = NULL;
 
     msize = sizeof(struct sge_string) + sizeof(char) * (size + 1);
     s = sge_malloc(msize);
@@ -44,7 +44,7 @@ int sge_destroy_string_pool(void) {
 
 
 int sge_alloc_string(int size, struct sge_string** sp) {
-    int ret;
+    int ret = SGE_ERR;
 
     if (size <= 0) {
         return SGE_ERR;
@@ -53,6 +53,7 @@ int sge_alloc_string(int size, struct sge_string** sp) {
     if (size <= SGE_STRING_SIZE) {
         *sp = sge_get_resource(string_res_pool);
         size = SGE_STRING_SIZE;
+        ret = SGE_OK;
     } else {
         ret = alloc_string_ex__(size, sp);
     }
@@ -66,8 +67,8 @@ int sge_alloc_string(int size, struct sge_string** sp) {
 }
 
 int sge_dup_string(struct sge_string** sp, const char* p, int len) {
-    int ret;
-    struct sge_string* s;
+    int ret = 0;
+    struct sge_string* s = NULL;
 
     if (NULL == p || len <= 0) {
         return SGE_ERR;

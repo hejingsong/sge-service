@@ -20,8 +20,8 @@ static int queue_empty__(struct sge_queue* q) {
 }
 
 int sge_alloc_queue(size_t size, struct sge_queue** queuep) {
-    size_t alloc_size;
-    struct sge_queue* queue;
+    size_t alloc_size = 0;
+    struct sge_queue* queue = NULL;
 
     alloc_size = sizeof(struct sge_queue) + sizeof(void*) * size;
     queue = sge_calloc(alloc_size);

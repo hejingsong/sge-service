@@ -53,9 +53,9 @@ static unsigned long alloc_sid__(struct sge_socket_mgr* mgr) {
 }
 
 static int task_cb__(void* data) {
-    int ret;
-    struct sge_module* module;
-    const char* module_name;
+    int ret = 0;
+    struct sge_module* module = NULL;
+    const char* module_name = NULL;
 
     module = (struct sge_module*)data;
     ret = sge_handle_module(module);
@@ -80,7 +80,7 @@ static int append_msg__(struct sge_socket* sock, struct sge_message* msg) {
 }
 
 static int notify_module__(struct sge_module* module) {
-    int status;
+    int status = 0;
 
     // Make sure only one thread handles module messages
     status = atomic_load_explicit(&module->handle_status, memory_order_acquire);
@@ -92,9 +92,9 @@ static int notify_module__(struct sge_module* module) {
 }
 
 static int handle_write_done__(struct sge_list* head) {
-    struct sge_list* iter, *next;
-    struct sge_socket* sock;
-    struct sge_message* msg;
+    struct sge_list* iter = NULL, *next = NULL;
+    struct sge_socket* sock = NULL;
+    struct sge_message* msg = NULL;
 
     SGE_LIST_FOREACH_SAFE(iter, next, head) {
         msg = sge_container_of(iter, struct sge_message, entry);
@@ -111,11 +111,11 @@ static int handle_write_done__(struct sge_list* head) {
 }
 
 static int handle_new_msg__(struct sge_list* head) {
-    int ret;
-    struct sge_socket* conn;
-    struct sge_module* module;
-    struct sge_list* iter, *next;
-    struct sge_message* msg;
+    int ret = 0;
+    struct sge_socket* conn = NULL;
+    struct sge_module* module = NULL;
+    struct sge_list* iter = NULL, *next = NULL;
+    struct sge_message* msg = NULL;
 
     if (SGE_LIST_EMPTY(head)) {
         return SGE_OK;
@@ -144,13 +144,13 @@ static int handle_new_msg__(struct sge_list* head) {
 }
 
 static int handle_new_conn__(struct sge_list* head) {
-    int fd, ret;
-    struct sge_server* server;
-    struct sge_socket* conn;
-    struct sge_module* module;
+    int fd = 0, ret = 0;
+    struct sge_server* server = NULL;
+    struct sge_socket* conn = NULL;
+    struct sge_module* module = NULL;
     struct sge_event conn_evt;
-    struct sge_list* iter, *next;
-    struct sge_message* msg;
+    struct sge_list* iter = NULL, *next = NULL;
+    struct sge_message* msg = NULL;
 
     if (SGE_LIST_EMPTY(head)) {
         return SGE_OK;
@@ -192,9 +192,9 @@ static int handle_new_conn__(struct sge_list* head) {
 
 static int create_port_listener__(const char* addr, const char* port, struct sge_socket** sockp) {
     struct addrinfo hints;
-    struct addrinfo *result, *rp;
+    struct addrinfo *result = NULL, *rp = NULL;
     struct sge_socket_addr sockaddr;
-    int sfd, s;
+    int sfd = 0, s = 0;
     int retcode = SGE_OK;
 
     memset(&hints, 0, sizeof(struct addrinfo));
@@ -242,7 +242,7 @@ RET:
 }
 
 int sge_init_server_pool(size_t size) {
-    int ret;
+    int ret = 0;
     ret = sge_alloc_res_pool(&socket_res_pool_ops, size, &socket_res_pool);
     if (SGE_OK == ret) {
         ret = sge_alloc_res_pool(&message_res_pool_ops, size, &message_res_pool);
@@ -256,7 +256,7 @@ void sge_destroy_server_pool(void) {
 }
 
 int sge_alloc_server(struct sge_module* module, struct sge_server** srvp) {
-    struct sge_server* srv;
+    struct sge_server* srv = NULL;
 
     srv = sge_malloc(sizeof(struct sge_server));
     srv->listener = NULL;
@@ -282,7 +282,7 @@ int sge_destroy_server(struct sge_server* srv) {
 }
 
 int sge_init_socket_mgr(void) {
-    struct sge_socket_mgr* mgr;
+    struct sge_socket_mgr* mgr = NULL;
 
     mgr = sge_calloc(sizeof(struct sge_socket_mgr));
     sge_alloc_dict(&integer_dict_ops, &mgr->ht_sock);
@@ -305,7 +305,7 @@ int sge_destroy_socket_mgr(void) {
 }
 
 int sge_alloc_socket(int fd, struct sge_socket** sockp) {
-    struct sge_socket* sock;
+    struct sge_socket* sock = NULL;
 
     if (NULL == g_socket_mgr || fd <= 0) {
         return SGE_ERR;
@@ -342,7 +342,7 @@ int sge_destroy_socket(struct sge_socket* sock) {
 }
 
 int sge_destroy_socket_by_sid(sge_socket_id sid) {
-    struct sge_socket* sock;
+    struct sge_socket* sock = NULL;
 
     if (SGE_OK == sge_get_socket(sid, &sock)) {
         return sge_destroy_socket(sock);
@@ -356,12 +356,12 @@ int sge_get_socket(sge_socket_id sid, struct sge_socket** sock) {
 }
 
 int sge_create_listener(const char* server_addr, struct sge_server* server) {
-    int ret;
-    char *p;
+    int ret = 0;
+    char *p = NULL;
     char addr[512];
-    size_t len;
+    size_t len = 0;
     struct sge_event evt;
-    struct sge_socket* listener;
+    struct sge_socket* listener = NULL;
 
     if (NULL == server_addr) {
         return SGE_ERR;
@@ -402,10 +402,10 @@ int sge_create_listener(const char* server_addr, struct sge_server* server) {
 }
 
 int sge_send_msg(sge_socket_id sid, const char* msg, size_t len) {
-    int ret;
-    size_t nwrite;
-    struct sge_socket* sock;
-    struct sge_message* m;
+    int ret = 0;
+    size_t nwrite = 0;
+    struct sge_socket* sock = NULL;
+    struct sge_message* m = NULL;
     struct sge_event evt;
 
     sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)&sock);
@@ -470,7 +470,7 @@ int sge_get_sock_msg(struct sge_socket* sock, struct sge_list* head) {
 }
 
 int sge_sock_msg_empty(sge_socket_id sid) {
-    struct sge_socket* sock;
+    struct sge_socket* sock = NULL;
 
     sge_get_dict(g_socket_mgr->ht_sock, (const void*)sid, 1, (void**)&sock);
     if (NULL == sock) {
@@ -485,7 +485,8 @@ int sge_sock_msg_empty(sge_socket_id sid) {
 }
 
 int sge_alloc_message(struct sge_message** msgp) {
-    struct sge_message* msg;
+    struct sge_message* msg = NULL;
+
     msg = (struct sge_message*)sge_get_resource(message_res_pool);
     SGE_LIST_INIT(&msg->entry);
 
