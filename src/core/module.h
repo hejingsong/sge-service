@@ -32,7 +32,7 @@ struct sge_module {
     void* handler;
     void* private_data;
 
-    char initialized:1;
+    unsigned char initialized:1;
     char pad[3];
 };
 

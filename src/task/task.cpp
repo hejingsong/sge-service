@@ -3,6 +3,7 @@ extern "C"{
 #endif
 
 #include <errno.h>
+#include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
 #include <sys/time.h>
@@ -14,6 +15,8 @@ extern "C"{
 #include "core/cond.h"
 #include "core/list.h"
 #include "core/queue.h"
+#include "core/timer.h"
+#include "core/event.h"
 #include "core/context.h"
 #include "core/spinlock.h"
 #include "core/res_pool.h"
@@ -31,6 +34,7 @@ struct sge_task_ctrl {
     int task_num;
     struct sge_task* tasks;
     struct sge_context* ctx;
+    pthread_t timer_tid;
 
     int reload:1;
 };
@@ -79,19 +83,18 @@ static int rand_worker__() {
 }
 
 static int steal_task__(int exclude_idx, struct sge_task_meta** metap) {
-    int ret;
-    int worker_idx;
-    void* data;
-    struct sge_task* task;
+    int ret = 0, idx = 0;
+    void* data = NULL;
+    struct sge_task* task = NULL;
 
     while(1) {
-        worker_idx = rand_worker__();
-        if (worker_idx == exclude_idx) {
+        idx = rand_worker__();
+        if (idx == exclude_idx) {
             continue;
         }
         break;
     }
-    task = &(g_task_ctrl->tasks[worker_idx]);
+    task = &(g_task_ctrl->tasks[idx]);
 
     SGE_SPINLOCK_LOCK(&task->lock);
     ret = sge_dequeue(task->task_queue, &data);
@@ -102,16 +105,20 @@ static int steal_task__(int exclude_idx, struct sge_task_meta** metap) {
 }
 
 static int get_task__(struct sge_task* task, struct sge_task_meta** metap) {
-    int ret;
-    void* data;
+    int ret = SGE_ERR;
+    void* data = NULL;
 
     SGE_SPINLOCK_LOCK(&task->lock);
     ret = sge_dequeue(task->task_queue, &data);
     SGE_SPINLOCK_UNLOCK(&task->lock);
 
     if (SGE_ERR == ret) {
-        // steal other task
-        ret = steal_task__(task->worker_idx, metap);
+        if (g_task_ctrl->task_num > 1) {
+            // steal other task
+            ret = steal_task__(task->worker_idx, metap);
+        } else {
+            *metap = NULL;
+        }
     } else {
         *metap = (struct sge_task_meta*)data;
     }
@@ -120,11 +127,11 @@ static int get_task__(struct sge_task* task, struct sge_task_meta** metap) {
 }
 
 static int wait_task__(struct sge_task* task) {
-    return sge_wait_cond(task->cond, 200);
+    return sge_wait_cond(task->cond, 0);
 }
 
 static int sched_task__(struct sge_task* task, struct sge_task_meta* meta) {
-    struct sge_task_meta* cur;
+    struct sge_task_meta* cur = NULL;
 
     cur = task->cur_task;
     task->cur_task = meta;
@@ -137,7 +144,7 @@ static int sched_task__(struct sge_task* task, struct sge_task_meta* meta) {
 
 static void task_entry__(intptr_t v) {
     struct sge_task* task = tls_task;
-    struct sge_task_meta* meta;
+    struct sge_task_meta* meta = NULL;
 
     sge_unused(v);
 
@@ -148,7 +155,6 @@ static void task_entry__(intptr_t v) {
 }
 
 static int alloc_task_meta__(struct sge_task_meta** metap) {
-    
     *metap = (struct sge_task_meta*)sge_get_resource(task_meta_res_pool);
     return SGE_OK;
 }
@@ -162,15 +168,23 @@ static int add_task_queue__(struct sge_task* task, struct sge_task_meta* meta) {
     return SGE_OK;
 }
 
+static int add_random_task_queue__(struct sge_task_meta* meta) {
+    int worker_idx;
+    struct sge_task* task;
+
+    worker_idx = rand_worker__();
+    task = &g_task_ctrl->tasks[worker_idx];
+    return add_task_queue__(task, meta);
+}
+
 static int init_task__(struct sge_task* task) {
+    task->cond = NULL;
+    task->last_task = NULL;
     task->main_task.fcontext = NULL;
     task->main_task.stack = NULL;
     task->main_task.stack_size = 0;
     task->main_task.flags = SGE_TASK_NORMAL;
     task->cur_task = &task->main_task;
-
-    SGE_SPINLOCK_INIT(&task->lock);
-    sge_alloc_cond(&task->cond);
     sge_alloc_queue(1024, &task->task_queue);
 
     return SGE_OK;
@@ -183,11 +197,14 @@ static void destroy_task__(struct sge_task* task) {
 }
 
 static void* task_main_loop__(void* arg) {
-    struct sge_task* task;
-    struct sge_task_meta* meta;
+    struct sge_task* task = NULL;
+    struct sge_task_meta* meta = NULL;
 
     task = (struct sge_task*)arg;
     tls_task = task;
+
+    SGE_SPINLOCK_INIT(&task->lock);
+    sge_alloc_cond(&task->cond);
 
     while(task->ctx->run) {
         if (SGE_ERR == get_task__(task, &meta)) {
@@ -196,7 +213,7 @@ static void* task_main_loop__(void* arg) {
         }
         sched_task__(task, meta);
         if (task->last_task && task->last_task->flags == SGE_TASK_PERMANENT) {
-            add_task_queue__(task, task->last_task);
+            add_random_task_queue__(task->last_task);
         }
         if (task->last_task && task->last_task->flags == SGE_TASK_NORMAL) {
             sge_release_resource(task->last_task->stack);
@@ -207,8 +224,20 @@ static void* task_main_loop__(void* arg) {
     return NULL;
 }
 
+static void* timer_loop__(void* arg) {
+    sge_unused(arg);
+
+    while(g_task_ctrl->ctx->run) {
+        sge_tick_timer();
+        usleep(10000);
+    }
+
+    return NULL;
+}
+
 int sge_init_task_pool(size_t size) {
-    int ret;
+    int ret = 0;
+
     ret = sge_alloc_res_pool(&task_meta_res_pool_ops, size, &task_meta_res_pool);
     if (SGE_OK == ret) {
         ret = sge_alloc_res_pool(&task_stack_res_pool_ops, size, &task_stack_res_pool);
@@ -222,14 +251,15 @@ void sge_destroy_task_pool(void) {
 }
 
 int sge_init_task_ctrl(struct sge_context* ctx) {
-    int i;
+    int i = 0;
     struct timeval tv;
-    struct sge_task* task;
-    struct sge_task_ctrl* ctrl;
+    struct sge_task* task = NULL;
+    struct sge_task_ctrl* ctrl = NULL;
 
     ctrl = (struct sge_task_ctrl*)sge_calloc(sizeof(struct sge_task_ctrl));
     ctrl->ctx = ctx;
     ctrl->reload = 0;
+    ctrl->timer_tid = 0;
     ctrl->task_num = ctx->cfg->worker_num;
     ctrl->tasks = (struct sge_task*)sge_calloc(sizeof(struct sge_task) * ctrl->task_num);
     if (NULL == ctrl->tasks) {
@@ -262,24 +292,37 @@ error:
 }
 
 int sge_run_task_ctrl(void) {
-    int i, ret;
-    struct sge_task* task;
+    int i = 0, ret = 0;
+    struct sge_task* task = NULL;
 
     if (NULL == g_task_ctrl) {
         return SGE_ERR;
     }
 
+    SGE_LOG(SGE_LOG_LEVEL_INFO, "service is running. pid(%ld)", getpid());
     for (i = 0; i < g_task_ctrl->task_num; ++i) {
         task = &(g_task_ctrl->tasks[i]);
         ret = pthread_create(&task->tid, NULL, task_main_loop__, task);
         if (0 != ret) {
-            SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "create thread error. reason(%s)", strerror(errno));
+            SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "create worker error. reason(%s)", strerror(errno));
             goto error;
         }
     }
 
+    ret = pthread_create(&g_task_ctrl->timer_tid, NULL, timer_loop__, NULL);
+    if (0 != ret) {
+        SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "create timer thread error. reason(%s)", strerror(errno));
+        goto error;
+    }
+
+    while(g_task_ctrl->ctx->run) {
+        sge_poll_event();
+    }
+
+    pthread_join(g_task_ctrl->timer_tid, NULL);
     for (i = 0; i < g_task_ctrl->task_num; ++i) {
         task = &(g_task_ctrl->tasks[i]);
+        sge_notify_cond(task->cond);
         // dont care return
         pthread_join(task->tid, NULL);
     }
@@ -290,7 +333,7 @@ error:
 }
 
 int sge_destroy_task_ctrl() {
-    int i;
+    int i = 0;
 
     if (NULL == g_task_ctrl) {
         return SGE_ERR;
@@ -306,9 +349,9 @@ int sge_destroy_task_ctrl() {
 }
 
 int sge_delivery_task(fn_task_cb cb, void* arg, enum sge_task_flags flags) {
-    int worker_idx;
-    struct sge_task* task;
-    struct sge_task_meta* meta;
+    int worker_idx = 0;
+    struct sge_task* task = NULL;
+    struct sge_task_meta* meta = NULL;
 
     alloc_task_meta__(&meta);
     meta->cb = cb;
@@ -329,7 +372,7 @@ int sge_delivery_task(fn_task_cb cb, void* arg, enum sge_task_flags flags) {
 }
 
 int sge_yield_task() {
-    struct sge_task* task;
+    struct sge_task* task = NULL;
 
     assert(tls_task != NULL);
 

@@ -12,7 +12,7 @@ typedef unsigned long ulong;
 
 
 struct __attribute__ ((__packed__)) sge_res {
-    int in_pool:1;
+    unsigned int in_pool:1;
     struct sge_res_pool* pool;
     char data[0];
 };
@@ -28,7 +28,7 @@ struct sge_res_pool {
 };
 
 static int alloc_res__(struct sge_res_pool* pool, struct sge_res** resp) {
-    struct sge_res* res;
+    struct sge_res* res = NULL;
 
     res = sge_malloc(pool->item_size);
     res->in_pool = 0;
@@ -38,7 +38,7 @@ static int alloc_res__(struct sge_res_pool* pool, struct sge_res** resp) {
 }
 
 static int alloc_res_items__(struct sge_res_pool* pool) {
-    size_t size;
+    size_t size = 0;
 
     size = pool->item_size * pool->size;
     pool->items = sge_malloc(size);
@@ -47,7 +47,7 @@ static int alloc_res_items__(struct sge_res_pool* pool) {
 }
 
 int sge_alloc_res_pool(struct sge_res_pool_ops* ops, size_t size, struct sge_res_pool** poolp) {
-    struct sge_res_pool* pool;
+    struct sge_res_pool* pool = NULL;
 
     pool = sge_calloc(sizeof(struct sge_res_pool));
     pool->ops = ops;
@@ -88,8 +88,8 @@ void* sge_get_resource(struct sge_res_pool* pool) {
 }
 
 int sge_release_resource(void* data) {
-    struct sge_res* res;
-    struct sge_res_pool* pool;
+    struct sge_res* res = NULL;
+    struct sge_res_pool* pool = NULL;
 
     if (NULL == data) {
         return SGE_ERR;

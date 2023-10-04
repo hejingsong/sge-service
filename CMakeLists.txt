@@ -70,9 +70,17 @@ CONFIGURE_FILE(
     "${PROJECT_SOURCE_DIR}/src/core/const.h"
 )
 
+IF(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+    SET(C_FLAGS "-g -Werror -Wall -Wextra")
+ELSE()
+    SET(C_FLAGS "-Werror -Wall -Wextra")
+ENDIF()
+
+MESSAGE(STATUS "C_FLAGS ${C_FLAGS}")
+
 # pthread
-SET(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -g -Werror -Wall -Wextra")
-SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread -g -Werror -Wall -Wextra")
+SET(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread ${C_FLAGS}")
+SET(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} "-pthread ${C_FLAGS}")
 LINK_LIBRARIES(${CMAKE_DL_LIBS})
 
 SET(SRC
@@ -90,6 +98,7 @@ SET(SRC
     src/server/cond.c
     src/server/server.c
     src/task/task.cpp
+    src/timer/timer.c
     ${EPOLL_FILE}
     ${IOURING_FILE}
 

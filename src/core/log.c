@@ -12,7 +12,7 @@
 #include "core/log.h"
 #include "core/context.h"
 
-const char* LEVEL_EN[] = {"UNKNOWN", "DEBUG", "INFO", "WARN", "ERROR", "SYS_ERROR", NULL};
+const char* LEVEL_EN[] = {"UNKNOWN", "DEB", "INF", "WAR", "ERR", "SYS", NULL};
 
 static struct sge_log* g_log;
 
@@ -26,7 +26,7 @@ static int format_date(char* buf, int size) {
 }
 
 static int format_log_level(enum sge_log_level log_lv, char* buf, int size) {
-    const char* lv_en;
+    const char* lv_en = NULL;
 
     lv_en = LEVEL_EN[log_lv];
     return snprintf(buf, size, "[%s] ", lv_en);
@@ -42,7 +42,7 @@ static int format_tid(char* buf, int size) {
 }
 
 static size_t default_log_format(char* buf, struct sge_log* log, enum sge_log_level level, const char* filename, size_t lineno, const char* fmt, va_list ap) {
-    size_t len;
+    size_t len = 0;
     size_t remain_size = SGE_LOG_MAX_LINE_SIZE;
 
     sge_unused(log);
@@ -60,7 +60,7 @@ static size_t default_log_format(char* buf, struct sge_log* log, enum sge_log_le
 }
 
 static int default_handle_init(struct sge_log* log) {
-    const char* p;
+    const char* p = NULL;
 
     if (log->ctx->cfg->logname) {
         p = log->ctx->cfg->logname;
@@ -88,7 +88,7 @@ static void default_handle_destroy(struct sge_log* log) {
 }
 
 static size_t default_log_handle(struct sge_log* log, const char* data, size_t len) {
-    size_t nwrite;
+    size_t nwrite = 0;
 
     if (NULL == log || NULL == data || len <= 0) {
         return 0;
@@ -116,8 +116,8 @@ static struct sge_log_handle_ops default_handle_ops = {
 
 
 int sge_init_log(struct sge_context* ctx, struct sge_log_format_ops* fops, struct sge_log_handle_ops* hops) {
-    int ret;
-    struct sge_log* log;
+    int ret = 0;
+    struct sge_log* log = NULL;
 
     log = sge_calloc(sizeof(struct sge_log));
     log->format_ops = fops ? fops : &default_format_ops;
@@ -162,7 +162,7 @@ int sge_destroy_log() {
 }
 
 int sge_write_log(enum sge_log_level level, const char* filename, size_t lineno, const char* fmt, ...) {
-    size_t len;
+    size_t len = 0;
     va_list ap;
     char buf[SGE_LOG_MAX_LINE_SIZE];
 

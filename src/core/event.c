@@ -19,7 +19,7 @@ static struct sge_res_pool_ops event_res_pool_ops = {
 };
 
 static struct sge_event* dup_event__(struct sge_event* evt) {
-    struct sge_event* event;
+    struct sge_event* event = NULL;
 
     event = sge_get_resource(event_res_pool);
     sge_copy_event(evt, event);
@@ -36,8 +36,8 @@ void sge_destroy_event_pool(void) {
 }
 
 void sge_register_event_mgr(struct sge_event_mgr* mgr) {
-    int i;
-    struct sge_event_mgr** p;
+    int i = 0;
+    struct sge_event_mgr** p = NULL;
 
     if (NULL == mgr) {
         return;
@@ -56,8 +56,8 @@ void sge_register_event_mgr(struct sge_event_mgr* mgr) {
 }
 
 int sge_init_event_mgr(void) {
-    int i;
-    struct sge_event_mgr* mgr;
+    int i = 0;
+    struct sge_event_mgr* mgr = NULL;
 
     i = 0;
     for (mgr = event_mgr_types[i]; NULL != mgr; mgr = event_mgr_types[++i]) {
@@ -71,8 +71,8 @@ int sge_init_event_mgr(void) {
 }
 
 int sge_get_event_mgr(const char* event_type_name, struct sge_event_mgr** mgrp) {
-    int i;
-    struct sge_event_mgr* mgr;
+    int i = 0;
+    struct sge_event_mgr* mgr = NULL;
 
     i = 0;
     for (mgr = event_mgr_types[i]; NULL != mgr; mgr = event_mgr_types[++i]) {
@@ -88,7 +88,7 @@ int sge_get_event_mgr(const char* event_type_name, struct sge_event_mgr** mgrp) 
 
 int sge_add_event(struct sge_event_mgr* mgr, struct sge_event* evt) {
     enum sge_event_type old_event_type;
-    struct sge_event* event, *old_event;
+    struct sge_event* event = NULL, *old_event = NULL;
 
     if (NULL == mgr || NULL == evt || evt->custom_id <= 0) {
         return SGE_ERR;
@@ -126,8 +126,8 @@ error:
 }
 
 int sge_del_event(struct sge_event_mgr* mgr, unsigned long custom_id, enum sge_event_type event_type) {
-    int ret;
-    struct sge_event* event, req_event;
+    int ret = 0;
+    struct sge_event* event = NULL, req_event;
 
     if (NULL == mgr) {
         return SGE_ERR;
@@ -156,15 +156,20 @@ int sge_del_event(struct sge_event_mgr* mgr, unsigned long custom_id, enum sge_e
 }
 
 int sge_poll_event(void) {
-    int i, ret, npoll;
-    struct sge_event_mgr* mgr;
+    int i = 0, ret = 0, npoll = 0;
+    struct sge_event_mgr* mgr = NULL;
 
     npoll = i = 0;
     for (mgr = event_mgr_types[i]; NULL != mgr; mgr = event_mgr_types[++i]) {
-        ret = mgr->ops->poll(mgr);
-        if (SGE_ERR == ret) {
-            return SGE_ERR;
+        if (0 == sge_empty_dict(mgr->ht_events)) {
+            ret = mgr->ops->poll(mgr);
+            if (SGE_ERR == ret) {
+                return SGE_ERR;
+            }
+        } else {
+            ret = 0;
         }
+
         npoll += ret;
     }
 
@@ -172,8 +177,8 @@ int sge_poll_event(void) {
 }
 
 int sge_destroy_event_mgr(void) {
-    int i;
-    struct sge_event_mgr* mgr;
+    int i = 0;
+    struct sge_event_mgr* mgr = NULL;
 
     i = 0;
     for (mgr = event_mgr_types[i]; NULL != mgr; mgr = event_mgr_types[++i]) {

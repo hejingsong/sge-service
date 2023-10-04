@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/sge.h"
+#include "core/timer.h"
 #include "core/event.h"
 #include "core/server.h"
 #include "core/module.h"
@@ -19,10 +20,10 @@ static void usage(const char* pname) {
 }
 
 static int alloc_modules__(struct sge_context* ctx) {
-    int ret, name_len;
-    const char *p1, *p2;
+    int ret = 0, name_len = 0;
+    const char *p1 = NULL, *p2 = NULL;
     struct sge_config* cfg = ctx->cfg;
-    struct sge_module* module;
+    struct sge_module* module = NULL;
 
     if (NULL == cfg->ori_modules) {
         return SGE_OK;
@@ -56,9 +57,9 @@ static int alloc_modules__(struct sge_context* ctx) {
 }
 
 static int init_modules__(struct sge_context* ctx) {
-    int ret;
-    struct sge_list* iter, *next;
-    struct sge_module* module;
+    int ret = 0;
+    struct sge_list* iter = NULL, *next = NULL;
+    struct sge_module* module = NULL;
 
     ret = alloc_modules__(ctx);
     if (SGE_ERR == ret) {
@@ -85,7 +86,7 @@ alloc_error:
 }
 
 static int init_config__(struct sge_config** cfg, const char* cfg_file) {
-    int ret;
+    int ret = 0;
 
     ret = sge_alloc_config(cfg_file, cfg);
     if (SGE_ERR == ret) {
@@ -102,10 +103,10 @@ static int init_config__(struct sge_config** cfg, const char* cfg_file) {
 }
 
 static int change_user(const char* user) {
-    struct passwd pwd;
-    struct passwd *result;
-    char buf[1024];
     int ret = 0;
+    char buf[1024];
+    struct passwd pwd;
+    struct passwd *result = 0;
 
     SGE_LOG(SGE_LOG_LEVEL_DEBUG, "user(%s)", user);
 
@@ -137,7 +138,7 @@ static int change_user(const char* user) {
 }
 
 static int daemonize(struct sge_context* ctx) {
-    int log_fd;
+    int log_fd = -1;
     pid_t pid;
 
     if (ctx->cfg->daemonize == 0) {
@@ -225,6 +226,12 @@ static int init_context(struct sge_context* ctx) {
         goto sock_error;
     }
 
+    ret = sge_init_timer(60000, 1);
+    if (SGE_ERR == ret) {
+        SGE_LOG(SGE_LOG_LEVEL_ERROR, "init timer error.");
+        goto timer_error;
+    }
+
     ret = sge_init_event_mgr();
     if (SGE_ERR == ret) {
         SGE_LOG(SGE_LOG_LEVEL_ERROR, "init event mgr error.");
@@ -249,23 +256,26 @@ module_error:
 task_error:
     sge_destroy_event_mgr();
 event_error:
+    sge_destroy_timer();
+timer_error:
     sge_destroy_socket_mgr();
 sock_error:
     return SGE_ERR;
 }
 
 static int destroy_context(struct sge_context* ctx) {
-    struct sge_module* module;
-    struct sge_list *iter, *next;
+    struct sge_module* module = NULL;
+    struct sge_list *iter = NULL, *next = NULL;
 
     SGE_LIST_FOREACH_SAFE(iter, next, &ctx->module_list) {
         module = sge_container_of(iter, struct sge_module, list);
         sge_destroy_module(module);
     }
 
-    sge_destroy_task_ctrl();
+    sge_destroy_timer();
     sge_destroy_event_mgr();
     sge_destroy_socket_mgr();
+    sge_destroy_task_ctrl();
 
     return SGE_OK;
 }
@@ -289,21 +299,6 @@ static int init_signal__(void) {
     if (ret == SIG_ERR) {
         SGE_LOG(SGE_LOG_LEVEL_SYS_ERROR, "set signal(SIGINT) handler error.");
         return SGE_ERR;
-    }
-
-    return SGE_OK;
-}
-
-static int event_poll__(void* arg) {
-    int n;
-    struct sge_context* ctx;
-
-    ctx = (struct sge_context*)arg;
-    while(ctx->run) {
-        n = sge_poll_event();
-        if (n == 0) {
-            sge_yield_task();
-        }
     }
 
     return SGE_OK;
@@ -356,8 +351,6 @@ int main(int argc, char const *argv[]) {
         ret = SGE_ERR;
         goto out;
     }
-
-    sge_delivery_task(event_poll__, &ctx, SGE_TASK_PERMANENT);
 
     ctx.run = 1;
     sge_run_task_ctrl();

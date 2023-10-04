@@ -34,7 +34,7 @@ static int set_nonblock__(int fd) {
 }
 
 static struct sge_message* create_message__(unsigned long cid, enum sge_msg_type type, ssize_t ret, void* ud) {
-    struct sge_message* msg;
+    struct sge_message* msg = NULL;
 
     sge_alloc_message(&msg);
     msg->custom_id = cid;
@@ -47,11 +47,11 @@ static struct sge_message* create_message__(unsigned long cid, enum sge_msg_type
 }
 
 static int handle_accept__(struct sge_event* evt) {
-    int fd;
+    int fd = 0;
     struct sockaddr_in addr;
-    socklen_t socklen;
+    socklen_t socklen = 0;
     struct sge_list dummy;
-    struct sge_message* msg;
+    struct sge_message* msg = NULL;
 
     SGE_LIST_INIT(&dummy);
     while(1) {
@@ -83,10 +83,11 @@ static int handle_accept__(struct sge_event* evt) {
 }
 
 static int do_handle_read__(struct sge_event* evt) {
-    ssize_t ret, offset;
+    ssize_t ret = 0, offset = 0;
     char data[SGE_STRING_SIZE];
+    unsigned char closed = 0;
     struct sge_list dummy;
-    struct sge_message* msg;
+    struct sge_message* msg = NULL;
 
     offset = 0;
     SGE_LIST_INIT(&dummy);
@@ -107,8 +108,7 @@ static int do_handle_read__(struct sge_event* evt) {
 
         // peer closed
         if (ret == 0) {
-            msg = create_message__(evt->custom_id, SGE_MSG_TYPE_CLOSED, ret, evt->arg);
-            SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+            closed = 1;
             break;
         }
 
@@ -124,6 +124,11 @@ static int do_handle_read__(struct sge_event* evt) {
     if (offset > 0) {
         msg = create_message__(evt->custom_id, SGE_MSG_TYPE_NEW_MSG, offset, evt->arg);
         sge_dup_string(&msg->msg, data, offset);
+        SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
+    }
+
+    if (closed) {
+        msg = create_message__(evt->custom_id, SGE_MSG_TYPE_CLOSED, ret, evt->arg);
         SGE_LIST_ADD_TAIL(&dummy, &msg->entry);
     }
 
@@ -148,14 +153,15 @@ static int handle_read__(struct sge_event* evt) {
 }
 
 static int handle_write__(struct sge_event* evt) {
-    ssize_t ret;
-    const char* data;
-    size_t nwrite, datalen, total;
-    struct sge_socket* sock;
-    struct sge_message* msg;
+    ssize_t ret = 0;
+    const char* data = NULL;
+    size_t nwrite = 0, datalen = 0, total = 0;
+    struct sge_socket* sock = NULL;
+    struct sge_message* msg = NULL;
     struct sge_list msg_list;
-    struct sge_list* iter, *next;
+    struct sge_list* iter = NULL, *next = NULL;
 
+    total = 0;
     SGE_LIST_INIT(&msg_list);
 
     sock = (struct sge_socket*)evt->arg;
@@ -163,7 +169,6 @@ static int handle_write__(struct sge_event* evt) {
         goto done;
     }
 
-    total = 0;
     SGE_LIST_FOREACH_SAFE(iter, next, &msg_list) {
         msg = sge_container_of(iter, struct sge_message, entry);
         datalen = sge_string_data(msg->msg, &data);
@@ -220,7 +225,7 @@ static uint32_t calc_events__(int types) {
 
 
 static int epoll_init__(struct sge_event_mgr* mgr) {
-    int fd;
+    int fd = 0;
 
     fd = epoll_create(1024);
     if (fd < 0) {
@@ -235,7 +240,7 @@ error:
 }
 
 static int epoll_add__(struct sge_event_mgr* mgr, struct sge_event* new_evt, enum sge_event_type old_event_type) {
-    int fd, ret, op;
+    int fd = 0, ret = 0, op = 0;
     enum sge_event_type event_type;
     struct epoll_event event;
 
@@ -265,9 +270,9 @@ static int epoll_add__(struct sge_event_mgr* mgr, struct sge_event* new_evt, enu
 }
 
 static int epoll_del__(struct sge_event* evt, struct sge_event* req_evt) {
-    int fd, ret, op;
+    int fd = 0, ret = 0, op = 0;
+    uint32_t epoll_event = 0;
     enum sge_event_type event_type;
-    uint32_t epoll_event;
     struct epoll_event event;
 
     event_type = evt->event_type & (~req_evt->event_type);
@@ -292,12 +297,12 @@ static int epoll_del__(struct sge_event* evt, struct sge_event* req_evt) {
 }
 
 static int epoll_poll__(struct sge_event_mgr* mgr) {
-    int fd, i, ret;
+    int fd = 0, i = 0, ret = 0;
+    struct epoll_event* event = NULL;
     struct epoll_event events[1024];
-    struct epoll_event* event;
 
     fd = convert_fd__(mgr->private_data);
-    ret = epoll_wait(fd, events, 1024, 200);
+    ret = epoll_wait(fd, events, 1024, -1);
     if (ret < 0) {
         if (EAGAIN == errno) {
             return SGE_OK;
@@ -324,7 +329,7 @@ static int epoll_poll__(struct sge_event_mgr* mgr) {
 }
 
 static int epoll_destroy__(struct sge_event_mgr* mgr) {
-    int fd;
+    int fd = 0;
 
     if (mgr->private_data) {
         fd = (int)(unsigned long)mgr->private_data;

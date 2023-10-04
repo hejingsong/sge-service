@@ -12,7 +12,7 @@ extern const char* LEVEL_EN[];
 
 
 static int parse_integer(ini_t* ini, const char *section, const char *key, int* p) {
-    const char* val;
+    const char* val = NULL;
     int v = 0;
 
     val = ini_get(ini, section, key);
@@ -29,7 +29,7 @@ static int parse_integer(ini_t* ini, const char *section, const char *key, int* 
 }
 
 static int parse_string(ini_t* ini, const char *section, const char *key, const char** p) {
-    const char *val;
+    const char *val = NULL;
     int ret = SGE_OK;
 
     val = ini_get(ini, section, key);
@@ -43,8 +43,8 @@ static int parse_string(ini_t* ini, const char *section, const char *key, const 
 
 
 static int parse_log_level(ini_t* ini, struct sge_config* cfg) {
-    int i;
-    const char *p, *val;
+    int i = 0;
+    const char *p = NULL, *val = NULL;
 
     if (SGE_ERR == parse_string(ini, "core", "log_level", &val)) {
         val = "DEBUG";
@@ -62,7 +62,7 @@ static int parse_log_level(ini_t* ini, struct sge_config* cfg) {
 }
 
 static int parse_worker_num(ini_t* ini, struct sge_config* cfg) {
-    int size;
+    int size = 0;
 
     if (SGE_ERR == parse_integer(ini, "core", "worker_num", &size)) {
         size = sysconf(_SC_NPROCESSORS_ONLN);
@@ -73,7 +73,7 @@ static int parse_worker_num(ini_t* ini, struct sge_config* cfg) {
 }
 
 static void parse_default_integer(ini_t *ini, const char* section, const char* key, int default_val, int *pval) {
-    int val;
+    int val = 0;
 
     if (SGE_ERR == parse_integer(ini, section, key, &val)) {
         val = default_val;
@@ -83,9 +83,9 @@ static void parse_default_integer(ini_t *ini, const char* section, const char* k
 }
 
 static void parse_string_common(ini_t *ini, const char* section, const char* key, char* default_val, char** pval) {
-    const char* p;
-    char* v;
-    size_t len;
+    const char* p = NULL;
+    char* v = NULL;
+    size_t len = 0;
 
     parse_string(ini, section, key, &p);
     if (NULL == p) {
@@ -93,7 +93,7 @@ static void parse_string_common(ini_t *ini, const char* section, const char* key
     } else {
         len = strlen(p);
         v = sge_malloc(len + 1);
-        strncpy(v, p, len);
+        memcpy(v, p, len);
         v[len + 1] = '\0';
     }
 
@@ -101,7 +101,7 @@ static void parse_string_common(ini_t *ini, const char* section, const char* key
 }
 
 static int parse_daemonize(ini_t* ini, struct sge_config* cfg) {
-    int status;
+    int status = 0;
 
     if (SGE_ERR == parse_integer(ini, "core", "daemonize", &status)) {
         status = 0;
@@ -112,12 +112,12 @@ static int parse_daemonize(ini_t* ini, struct sge_config* cfg) {
 }
 
 int sge_alloc_config(const char* cfg_file, struct sge_config** cfgp) {
-    struct sge_config* cfg;
+    struct sge_config* cfg = NULL;
     size_t config_file_len = strlen(cfg_file);
 
     cfg = sge_calloc(sizeof(struct sge_config));
     cfg->config_file = sge_malloc(config_file_len + 1);
-    strncpy(cfg->config_file, cfg_file, config_file_len);
+    memcpy(cfg->config_file, cfg_file, config_file_len);
     cfg->config_file[config_file_len + 1] = '\0';
 
     *cfgp = cfg;
@@ -125,7 +125,7 @@ int sge_alloc_config(const char* cfg_file, struct sge_config** cfgp) {
 }
 
 int sge_parse_config(struct sge_config* cfg) {
-    ini_t* ini;
+    ini_t* ini = NULL;
 
     if (NULL == cfg || NULL == cfg->config_file) {
         return SGE_ERR;
